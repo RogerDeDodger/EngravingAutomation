@@ -1,0 +1,9 @@
+Unable to open file: /home/pi/Documents/F-Engrave-1.76_src/NSW/settings.txt
+(F-Engrave Batch Mode)
+G90
+G20
+G17 G64 P0.001 M3 S3000
+F5.00
+G0 Z0.2500
+M5
+M2

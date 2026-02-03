@@ -1,0 +1,17 @@
+xvfb-run -a python3 /home/pi/Documents/F-Engrave-1.76_src/f-engrave.py -g /home/pi/Documents/F-Engrave-1.76_src/NSW/settings.ngc -b -f /home/pi/Documents/F-Engrave-1.76_src/fonts/normal.cxf >/home/pi/Documents/F-Engrave-1.76_src/output/trial1.ngc
+
+xvfb-run: I believe it ignores the GUI and does not launch the GUI platform
+-b: always needed, a flag that indicates batch mode and runs the script as required. If it is not there it will freeze
+-g: Reads the gcode file, I think it is settings but I am actually not sure 
+-f: switches the font files
+>/home/pi/Documents/F-Engrave-1.76_src/output/trial1.ngc: stores gcode to a file
+
+
+
+
+
+vfb-run -a python3 /home/pi/Documents/F-Engrave-1.76_src/f-engrave.py -g /home/pi/Documents/F-Engrave-1.76_src/NSW/settings.ngc -b -f /home/pi/Documents/F-Engrave-1.76_src/fonts/normal.cxf -t "$file_content" >/home/pi/Documents/F-Engrave-1.76_src/output/trial1.ngc
+
+-t: include text but only what is immedietely after (no filepath) 
+file_content = $(<filepath) to store files in bash 
+"$file_content" then refers to the pointer that stores the file_path

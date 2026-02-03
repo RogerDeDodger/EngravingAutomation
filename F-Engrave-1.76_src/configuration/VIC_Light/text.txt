@@ -1,0 +1,7 @@
+    VIC       05/12/2025               V0081628
+.           1967 Ford Mustang
+           6ZZ0007R01C137652
+        4         MA           Coupe 
+       LA1 LB1 LB2 LG2 LH6 LK1 LK2 LM1 LS2 LS4 LS6
+       OEM                  N/A
+                             014656
