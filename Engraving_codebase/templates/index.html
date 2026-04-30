@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<title>Compliance Plate Engraving Controller</title> <!--browser title to show when visiting -->
+
+<style>
+
+/* ===== GENERAL =====  body means it applies to the entire body object */
+body {
+    font-family: Arial;
+    margin: 0;
+    background-color: #1e1e1e;
+    color: white;
+}
+
+/* ===== TAB BAR ===== */
+.tab-bar {
+    display: flex;
+    background-color: #2c2c2c;
+}
+
+.tab {
+    padding: 15px 25px;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.tab:hover {
+    background-color: #444;
+}
+
+.tab.active {
+    background-color: #0078d4;
+}
+
+/* ===== CONTENT ===== */
+.tab-content {
+    display: none;
+    padding: 20px;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.panel-container {
+    display: flex;
+    gap: 20px; /* space between panels */
+}
+
+.panel-container .panel {
+    flex: 1; /* percentage width of each panel */
+}
+
+.panel-container .settingsPanel {
+    flex: 1; /* percentage width of each panel */
+}
+
+/* ===== PANELS ===== */
+.panel {
+    background-color: #2c2c2c;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    line-height: 1.75;
+}
+
+.settingsPanel {
+    background-color: #2c2c2c;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    line-height: 1.75;
+}
+
+.input-pair {
+    display: inline-flex;
+    gap: 5px; /* Space between boxes */
+}
+.input-pair input {
+    width: 60px; /* Adjust width as needed */
+}
+
+/* ===== BUTTONS ===== */
+.big-button {
+    padding: 20px;
+    font-size: 20px;
+    margin: 10px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 0.1s
+}
+
+.big-button:active {
+    background-color: #dc3545;
+    color: white;
+    cursor: wait;
+}
+
+.small-button {
+    padding: 8px;
+    font-size: 12px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.small-button:active {
+    background-color: #444;
+    color: white;
+    cursor: wait;
+}
+
+.green {
+    background-color: #28a745;
+    color: white;
+}
+
+.red {
+    background-color: #dc3545;
+    color: white;
+}
+
+.blue {
+    background-color: #0078d4;
+    color: white;
+}
+
+.big-button:hover {
+    opacity: 0.8;
+}
+
+</style>
+
+
+</head>
+
+<body>
+
+<!-- ===== TABS ===== -->
+<div class="tab-bar">
+    <div class="tab active" onclick="openTab('Prepare')">Prepare</div>
+    <div class="tab" onclick="openTab('Engrave')">Engrave</div>
+    <div class="tab" onclick="openTab('Calibrate')">Calibrate</div>
+</div>
+
+<!-- ===== PREPARE TAB ===== -->
+<div id="Prepare" class="tab-content active">
+    <div class="panel">
+        <h2>Machine Control</h2>
+        <button class="big-button green">Unlock</button>
+        
+
+        <!-- contain jog and zeroing functions-->
+    </div>
+</div>
+
+<!-- ===== ENGRAVE TAB ===== -->
+<div id="Engrave" class="tab-content">
+    <div class="panel-container">
+        <!-- Plate Information Panel-->
+        <div class="panel" id="panel1">
+            <h2>Plate Information</h2>
+            <label for="states">Plate's State of Jurisdiction:</label>
+            <select name="state" id="state" onchange="handleSelection(this.value)">
+                <option value="QLD">Queensland</option>
+                <option value="NSW">New South Whales</option>
+                <Option value="VIC_HEAVY">Heavy Vehicle Mod Plates</Option>
+                <option value="VIC_LIGHT">Light Vehicle Mod Plates</option>
+            </select>
+            <div class="panel" id="engravingDetails"></div>
+
+            
+
+        </div>
+
+
+        <div class="settingsPanel">
+            <!-- ===== SETTINGS PANEL ===== -->
+            <h2>Engraver Settings</h2>
+            <div class="panel" id="engravingSettings">
+                <label for="cutZ">Cutting Z level: </label>
+                <input type="number" id="cutZ" placeholder="Abs Z cut level"><br>
+                
+                <label for="safeZ">Safe Z level: </label>
+                <input type="number" id="safeZ" placeholder="Z level when spindle moves"><br>      
+            
+                <label>Gcode Origin: </label>
+                <div class="input-pair">
+                    <input type="number" id="originX" placeholder="X">
+                    <input type="number" id="originY" placeholder="Y">
+                </div><br>
+            
+                <label>Final Work Position: </label>
+                <div class="input-pair">
+                    <input type="number" id="finalX" placeholder="X">
+                    <input type="number" id="finalY" placeholder="Y">
+                    <input type="number" id="finalZ" placeholder="Z">
+                </div><br>
+
+                <button onclick=dispMoreEngDetails()>More Settings</button>
+                <div class="panel" id="moreEngravingSettings" style="display: none">
+
+                    <label>Feed Rate </label>
+                    <input type="number" id="feedRate" value=400><!-- load in the default value with seperate function later-->
+                    <label for="feedRate">mm/min</label><br>
+                    
+                    <label>Plunge Rate </label>
+                    <input type="number" id="plungeRate" value="60">
+                    <label for="plungeRate">mm/min</label><br>
+                    
+                    <label>Text Height </label>
+                    <input type="number" id="textHeight" value="">
+                    <label for="textHeight">mm</label><br>
+
+                    <label>Line Thickness </label>
+                    <input type="number" id="lineThickness" value="">
+                    <label for="lineThickness">mm</label><br>
+                    
+                    <label>Text Width </label>
+                    <input type="number" id="textWidth" value="">
+                    <label for="textWidth">%</label><br>
+                    
+                    <label> Char Spacing </label>
+                    <input type="number" id="charSpacing" value="">
+                    <label for="charSpacing">%</label><br>
+
+                    <label>Word Spacing </label>
+                    <input type="number" id="wordSpacing" value="">
+                    <label for="wordSpacing">%</label><br>
+
+                    <label>Line Spacing </label>
+                    <input type="number" id="lineSpacing" value="">
+                    <label for="lineSpacing">% of Text Height</label><br>
+
+                    <label> Text Angle </label>
+                    <input type="number" id="textAngle" value="">
+                    <label for="textAngle">deg</label><br>
+
+
+
+                    <label for="gPre">Pre-script Gcode: </label>
+                    <input type="text" id="gPre" value="G21 G90 G17 M3 S12000"><br>
+
+                    <label for="gPost">Post-script Gcode: </label>
+                    <input type="text" id="gPost" value="G0 X0.000 Y115.000 Z15.000 M5 M2">
+
+
+
+
+                    <br>
+                </div>
+
+                
+            </div>
+            
+
+        </div>
+    
+    
+    </div>
+
+    <div class="panel-container">
+        <div class="panel">
+            <button class="big-button green" onclick=saveInput()>Generate Preview</button>
+        </div>
+    </div> 
+
+</div>
+
+<!-- ===== SETTINGS TAB ===== -->
+<div id="Calibrate" class="tab-content">
+    <div class="panel">
+        <h2>Settings</h2>
+        <button class="big-button blue">Calibrate</button>
+    </div>
+</div>
+
+<script>
+    // create a anon function to define
+    window.onload = async function() { 
+        // fill fields with default values assume default state is QLD
+        const response = await fetch("/load_initial_settings", {
+            method: "GET"
+        })
+        const data = await response.json() // extract the json from the response and can be used as data.key
+        console.log(data)
+        // all JS objects are effectively dicts
+        for (const key in data) { // if a key is erronious it breaks entirely
+            const container = document.getElementById(key)
+            if (!container) {
+                console.warn("While loading initial settings, unrecognised key recieved. ")
+                continue
+            }
+            console.log(data[key])
+            container.value = data[key]
+        }
+    };
+
+function dispMoreEngDetails() {
+    const moreSettings = document.getElementById("moreEngravingSettings");
+
+    // toggle display more details block
+    if (moreSettings.style.display === "none") {
+        moreSettings.style.display = "block";
+    } else {
+        moreSettings.style.display = "none";
+    }
+}
+
+
+
+async function saveInput() {
+    console.log("BUTTON CLICKED") // make sure to save the engraver settings as well
+    const stateSelection = document.getElementById("state").value;
+    const textContainer = document.getElementById("engravingDetails");
+    const engContainer = document.getElementById("engravingSettings");
+    const moreEngContainer = document.getElementById("moreEngravingSettings");
+
+    const inputs = textContainer.querySelectorAll("input");
+    const inputsEng = engContainer.querySelectorAll("input");
+    const inputsEngMore = moreEngContainer.querySelectorAll("input");
+
+    const Ninp = inputs.length;
+    const NinpEng = inputsEng.length;
+    const NinpEngMore = inputsEngMore.length;
+    
+    console.log(`found ${Ninp} inputs`);
+
+    // build some sort of data object by going through each input
+    const inputDat = {};
+    const inputDatEng = {};
+    const inputDatEngMore = {};
+
+    inputs.forEach(input => {
+        inputDat[input.id] = input.value;
+    })
+
+    inputsEng.forEach(input => {
+        inputDatEng[input.id] = input.value;
+    })
+
+    inputsEngMore.forEach(input => {
+        inputDatEngMore[input.id] = input.value;
+    })
+
+
+    inputDat.inputCount = Ninp;
+    inputDatEng.inputCount = NinpEng;
+    inputDatEngMore.inputCount = NinpEngMore;
+
+
+    const response = await fetch('/send_settings', {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({textInput: inputDat,
+                            state: stateSelection,
+                            engravingSettings: inputDatEng,
+                            engravingSettingsMore: inputDatEngMore})
+    })
+    if (!response.ok) throw new Error("Network error");
+    const dataString = await response.text() // I think i also need an await for the response.text 
+    console.log(dataString)
+    document.getElementById("panel1").innerHTML = ""
+    const jsonResponse = response.json()
+    const container = document.getElementById('panel1')
+    const img = document.createElement('img')
+    img.src = dataString
+    container.appendChild(img)
+
+
+
+}
+
+
+function startEngraving() {
+    ;
+}
+
+function loadDefaultSettings() {
+    fetch('/get_settings', {
+        method: "GET"
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById("cutZ").placeholder = data.cutZ; // load the data into the inputs section
+    })
+
+}
+
+async function handleSelection(value) {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Queensland textbox
+    if (value=="QLD") {
+        const fields = [
+            {value: 'MA3790', type: 'text', id: 'accNo', placeholder: 'e.g. MA3790',            label: 'Accreditation No:     '},
+            {value: today, type: 'date', id: 'date', placeholder: '',                           label: 'Date:                 '},
+            {value: '', type: 'number', id: 'certNo', placeholder: 'e.g. 1132370',              label: 'Cert. No:             '},
+            {value: '', type: 'text', id: 'modBod', placeholder: 'e.g. Jayco Australia',        label: 'Modification By:      '},
+            {value: '', type: 'text', id: 'modCode', placeholder: 'e.g. LH11',                  label: 'Mod Codes:            '},
+            {value: '', type: 'text', id: 'VIN', placeholder: 'e.g. WV3ZZZSZ5S9060316',         label: 'Vin/Chassis No:       '},
+            {value: '', type: 'text', id: 'tyreSizes', placeholder: 'Enter the exact String',       label: 'Tyre Sizes:           '}, // location of secoundary handleselection
+            {value: '', type: 'number', id: 'seatCap', placeholder: 'e.g. 4',                   label: 'Mod Seating Capacity: '},
+            {value: '', type: 'number', id: 'GVM', placeholder: 'e.g. 3000',                    label: 'Mod G.V.M:            '},
+            {value: '', type: 'number', id: 'GCM', placeholder: 'e.g. 6000',                    label: 'Mod G.C.M:            '},
+            {value: '----', type: 'text', id: 'GTM', placeholder: '',                         label: 'Mod G.T.M:            '},
+            {value: '----', type: 'text', id: 'ATM', placeholder: '',                         label: 'Mod A.T.M:            '},
+        ]
+    const container = document.getElementById("engravingDetails");
+    container.innerHTML = ""; // clear the container
+    fields.forEach(field => {
+        //create label 
+        const label = document.createElement("label");
+        label.textContent = field.label;
+        label.for = field.id;
+        container.appendChild(label);
+
+        // create input
+        const input = document.createElement("input");
+        input.type = field.type;
+        input.id = field.id;
+        input.placeholder = field.placeholder;
+        input.value = field.value;
+        container.appendChild(input);
+
+        // Add line break
+        const br = document.createElement("br");
+        container.appendChild(br);
+    })
+    } else if (value=="NSW") {
+        const fields = [
+            {value: '130009', type:'number', id:'accNo', placeholder:'e.g. 130009', label:'Licence Number: '},
+            {value: today, type:'date', id:'date', placeholder:'', label:'Date: '},
+            {value: '', type:'text', id:'certNo', placeholder:'e.g. 1300092600012MP', label:'Certification Number: '},
+            {value: '', type:'text', id:'VIN', placeholder:'', label:'VIN: '},
+            {value: '', type:'text', id:'engNo', placeholder:'', label:'Engine Number: '},
+            {value: '', type:'number', id:'frontTyre', placeholder:'', label:'Seating Capacity: '},
+            {value: '', type:'text', id:'', placeholder:'', label:'Tyre Size: '},
+            {value: '', type:'text', id:'frontTyre', placeholder:'', label:'Front  '},
+            {value: '', type:'text', id:'rearTyre', placeholder:'', label:'Rear '},
+            {value: '', type:'number', id:'GVM', placeholder:'', label:'Modification GVM: '},
+            {value: '', type:'number', id:'GCM', placeholder:'', label:'Modification GCM: '},
+            {value: '----', type:'text', id:'GTM', placeholder:'', label:'Modification GTM: '},
+            {value: '----', type:'text', id:'ATM', placeholder:'', label:'Modification ATM: '},
+            {value: '', type:'test', id:'modCodes', placeholder:'Separate with full stops', label:'Modification Codes: '},
+        ]
+        const container = document.getElementById("engravingDetails");
+    container.innerHTML = ""; // clear the container
+    fields.forEach(field => {
+        //create label 
+        const label = document.createElement("label");
+        label.textContent = field.label;
+        label.for = field.id;
+        container.appendChild(label);
+
+        // create input
+        const input = document.createElement("input");
+        input.type = field.type;
+        input.id = field.id;
+        input.placeholder = field.placeholder;
+        input.value = field.value;
+        container.appendChild(input);
+
+        // Add line break
+        const br = document.createElement("br");
+        container.appendChild(br);
+    })
+    } else if (value=="VIC_HEAVY") { 
+        const fields = [
+            {value: "", type: "text", id: "certNo", placeholder: "", label:"VASS Certificate No: "}, 
+            {value: today, type: "date", id: "date", placeholder: "", label:"Date: "}, 
+            {value: "", type: "text", id: "modCode", placeholder: "", label:"Mod Codes: "}, 
+            {value: "", type: "text", id: "VIN", placeholder: "", label:"VIN Chassis No: "}, 
+            {value: "", type: "text", id: "tyreSizes", placeholder: "", label:"Tyre Sizes: "}, 
+            {value: "", type: "number", id: "noAxle", placeholder: "", label:"Mod No Axles: "}, 
+            {value: "", type: "text", id: "adrCAT", placeholder: "", label:"ADR Category: "}, 
+            {value: "", type: "text", id: "seatCap", placeholder: "", label:"Seating Cap: "}, 
+            {value: "", type: "text", id: "bodStyle", placeholder: "", label:"Body Style: "}, 
+            {value: "", type: "number", id: "GVM", placeholder: "", label:"GVM/ATM: "}, 
+            {value: "", type: "number", id: "GCM", placeholder: "", label:"GCM/GTM: "}, 
+            {value: "", type: "number", id: "SerNo", placeholder: "", label:"Serial No: "}, 
+        ]
+
+        // get container that contains these values
+        const container = document.getElementById("engravingDetails");
+        container.innerHTML = ""; // clear the container
+
+        fields.forEach(field => {
+            //create label element
+            const label = document.createElement("label");
+            label.textContent = field.label;
+            label.for = field.id;
+            container.appendChild(label);
+
+            // create input element
+            const input = document.createElement("input");
+            input.type = field.type;
+            input.id = field.id;
+            input.placeholder = field.placeholder;
+            input.value = field.value;
+            container.appendChild(input);
+
+            // make line break
+            const br = document.createElement("br");
+            container.appendChild(br);
+        })
+
+
+    } else if (value=="VIC_LIGHT") { 
+        //TODO impliment same logic as above
+    }
+
+    // refresh default settings
+    const response = await fetch("/reload_engraver_settings", {
+        method: "POST", 
+        header: {
+            "content-Type": "text/plain"
+        }, // still need headers even while sending plain text
+        body: value
+    })
+
+
+    return fields;
+
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+    const stateEl = document.getElementById('state');
+    if (stateEl) {
+        stateEl.value = 'QLD';
+        handleSelection('QLD');
+    }
+});
+
+function openTab(tabName) {
+    // Hide all tabs
+    const contents = document.querySelectorAll(".tab-content");
+    contents.forEach(c => c.classList.remove("active"));
+
+    // Remove active from all buttons
+    const tabs = document.querySelectorAll(".tab");
+    tabs.forEach(t => t.classList.remove("active"));
+
+    // load relative tab 
+
+    // Show selected tab
+    document.getElementById(tabName).classList.add("active");
+
+    // Highlight selected tab button
+    event.target.classList.add("active");
+}
+
+</script>
+
+</body>
+</html>

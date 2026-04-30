@@ -28,19 +28,23 @@
 # - make a string and generator editor that allows for quick additions to the plate by then 
 # subsequently concatinating the files
 
+# - add a verbose switch
+
 
 import serial
 import time
 import glob
 from threading import Event 
 import math
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 import subprocess
 import os
 import re
 from dataclasses import dataclass, asdict, is_dataclass
 import json
+import numpy as np 
+import matplotlib.pyplot as plt
+import math
 # from pynput import keyboard
 
 
@@ -92,7 +96,7 @@ def send_wakeup(ser=None, port="/dev/ttyUSB0",baud=115200):
         return ser
 
 
-def verify_wPos(ser, mapping=(193.001, 172.801, 28.521)): 
+def verify_wPos(ser, mapping=(193.001, 172.801, 28.521), verbose=False): 
     # wPos to mPos mapping
     # mapping = wPos - mPos 
     ser.reset_input_buffer()
@@ -102,7 +106,9 @@ def verify_wPos(ser, mapping=(193.001, 172.801, 28.521)):
     ser.write(b"?") # probes Mpos
     time.sleep(2)
     string = ser.read(100).decode()
-    print(string)
+
+    if verbose: 
+        print(string)
 
     MPos = string[string.index("M")+5:string.index("W")-1]
     MPos = tuple(float(i) for i in MPos.split(","))
@@ -111,26 +117,31 @@ def verify_wPos(ser, mapping=(193.001, 172.801, 28.521)):
     WPos = tuple(float(i) for i in WPos.split(","))
 
     cur_map = (WPos[0] - MPos[0], WPos[1] - MPos[1], WPos[2] - MPos[2])
-    print("string response read as: ", string)
-    print("Machine cordinate: ", MPos)
-    print("Work cordinates: ", WPos)
+    
+    if verbose: 
+        print("string response read as: ", string)
+        print("Machine cordinate: ", MPos)
+        print("Work cordinates: ", WPos)
 
     if (abs(cur_map[0] - mapping[0]) >= 0.1) or (abs(cur_map[1] - mapping[1]) >= 0.1) or (abs(cur_map[2] - mapping[2]) >= 0.1): 
-        print("Machine Position Inaccurate..")
-        print(f"difference : {abs(cur_map[0] - mapping[0])}, {abs(cur_map[1] - mapping[1])}, {abs(cur_map[2] - mapping[2])}")
-        print("Recalibrating...")
+        if verbose: 
+            print("Machine Position Inaccurate..")
+            print(f"difference : {abs(cur_map[0] - mapping[0])}, {abs(cur_map[1] - mapping[1])}, {abs(cur_map[2] - mapping[2])}")
+            print("Recalibrating...")
 
         homeNcalibrate(ser, mapping=mapping)
 
     else: 
-        print("Machine Position Accurate. ")
+        if verbose: 
+            print("Machine Position Accurate. ")
         return ser
     
     return ser
 
 
-def homeNcalibrate(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25)):
-    print("homing")
+def homeNcalibrate(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25), verbose=False):
+    if verbose: 
+        print("homing")
     ser.reset_input_buffer()
     ser.write(b"?") # probes Mpos
     time.sleep(2)
@@ -142,34 +153,32 @@ def homeNcalibrate(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25)):
     ser.write(b"$H\n")
     time.sleep(1) # NEED /n to execute the command
 
-    wait_for_movement_completion(ser,"$H\n")
-    print("moving to home")
+    wait_for_movement_completion(ser,"$H\n", verbose=verbose)
     mPos = (wPos[0] - mapping[0], wPos[1] - mapping[1], wPos[2] - mapping[2])
     home_cmd = f"G53 X{mPos[0]:.3f} Y{mPos[1]:.3f} Z{mPos[2]:.3f}\n"
     ser.write(str.encode(home_cmd))
-    print(home_cmd)
     wait_for_idle(ser)
-    print("wait done")
     time.sleep(2)
-    print("moving to work")
     work_cmd = f"G92 X{wPos[0]:.3f} Y{wPos[1]:.3f} Z{wPos[2]:.3f}\n"
-    print(work_cmd)
     ser.write(str.encode(work_cmd))
     wait_for_idle(ser)
     return ser
 
 
-def wait_for_movement_completion(ser, clean_cmd_line): 
+def wait_for_movement_completion(ser, clean_cmd_line, verbose=False): 
     # Event().wait(1)
     ser.reset_input_buffer()
     if clean_cmd_line not in ("$X", "$$"): 
         cmd_out = ser.readline().strip().decode()
-        print(f"immediete out : {cmd_out}")
+        if verbose: 
+            print(f"immediete out : {cmd_out}") # flag immediete out 1 
         while cmd_out != "ok": 
             # print("inside loop")
             if "alarm" in cmd_out.lower():
                 print("Machine in Alarm state!")
-                print("cmd out:", cmd_out)
+                if verbose: 
+                    print("cmd out:", cmd_out)
+                pass
 
             
             if "error" in cmd_out:
@@ -179,7 +188,8 @@ def wait_for_movement_completion(ser, clean_cmd_line):
                 print("Hard Limit reached! Manually move spindle away from limit switches and restart.")
                 break
             cmd_out = ser.readline().strip().decode()
-            print(cmd_out)
+            if verbose:
+                print(cmd_out)
         
         return None
 
@@ -191,18 +201,21 @@ def wait_for_idle(ser):
         if "<Idle" in status:
             return
 
-def write_gcode(ser, g_code_path):
+def write_gcode(ser, g_code_path, verbose=False):
     file = open(g_code_path,'r')
-    print("file opened")
+    if verbose: 
+        print("file opened")
     # send wakeup to ser
     ser.write(b'\r\n\r\n') 
     time.sleep(1)
-    print("going to x0y0")
+    if verbose: 
+        print("going to zero X and Y in work cordinates. ")
     ser.write(str.encode("G0 X0 Y0 Z10" + "\n"))
     time.sleep(10)
-    print("went to X0 Y0")
+    if verbose: 
+        print("going to approximate top right corner of plate in work cordinates.0")
     ser.write(str.encode("G0 X90 Y49 Z10" + "\n"))
-    print("went to 'M'")
+
     # check work cordinate mapping
     # verify_wPos(ser, mapping)
     for line in file: 
@@ -217,7 +230,7 @@ def write_gcode(ser, g_code_path):
             wait_for_movement_completion(ser, cleaned_line)
 
         
-    print("End")
+    print("====End====")
     return
 
 
@@ -247,8 +260,6 @@ def scan_grbl_port(baud=115200):
 
     return None
 
-import math
-from datetime import datetime, timedelta
 
 def calibrate_spoilboard(depth, bed_dim=(125, 80)):
     """
@@ -391,14 +402,13 @@ def getch():
 def jog(ser, mapping):
     # inputs, serial stringe
     print("----------------------jog mode-----------------------")
-    print("use 'ws' to move the spindle in the positive and negative y direction. ")
-    print("use 'ad' to move the spindle in the positive and negative x direction. ")
-    print("use 'qe' to move the spindle in the up and down z direction. ")
+    print("use 'wasd-qe' to move the spindle in the xy-z direction, where e is negative in z. ")
     print("use 'n' to exit jog mode. ")
-    print("use 'm' to switch jog speeds: ")
     print("use 'b' to zero xy cordinates")
     print("use 'v' to zero z cordinates")
     print("use 'x' to toggle on spindle")
+    print("use 'p' to goto a specific work cordinate")
+    print("use 'm' to switch jog speeds: ")
     print("- 0.01 mm ")
     print("- 0.05 mm ")
     print("- 0.1 mm (DEFAULT)")
@@ -553,7 +563,231 @@ def print_main_menu():
     print("'n' - exit")
     return
 
-def generate_gcode(state_idx, text_path, plate_num, depth=None, z_safe=None, origin_offset=None, finish_position=(0,125,20)): 
+def generate_preview(stateIdx, gcode_path, plate_num, mapping, originOffset=(0, 2)): 
+    # generate preview figure and store in folder first obtain the mPos start and ends of the plate location to better generate preview
+    # ---- bed locations ---- (BL corner) all mPos not wPos
+    # NSW: (-205.6, -159.6) mm 
+    # QLD: (-205.6, -159.6) mm 
+    # VIC light: (-205, -159.3) mm
+    # VIC heavy: (-205, -153) mm    
+    # mapping = wPos - mPos
+
+    # seems to need to add origin offset
+    states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
+    pl = [[-205.6, -205.6, -205, -205], [-159.6, -159.6, -159.3, -153]]
+    imDim = [[126, 126, 110, 125], [71, 71, 59, 70]]
+    today = datetime.now().strftime("%Y%m%d").split("-")
+    datetimeString = f"{today[0][2:]}{today[1]}{today[2]}"
+
+    plateImg = plt.imread(f"plates_images/{states[stateIdx]}_ModPlate_Image.jpg")
+    with open(gcode_path, 'r') as f: 
+         lines = f.readlines()
+
+    x = 0
+    y = 0
+    xArr = []
+    yArr = []
+    xChar = []
+    yChar = []
+    for line in lines: 
+        if line.startswith("G1") or line.startswith("G0"): 
+            if line.find("Z") != -1 and line.find("F") == -1: 
+                # flush last letter and clear array
+                xChar.append(xArr)
+                yChar.append(yArr)
+                xArr = []
+                yArr = []
+
+            if line.find("Z") == -1: 
+                Xi = line.find("X")
+                Yi = line.find("Y")
+
+                if Xi != -1: 
+                    x = float(line[Xi+1:Xi+6]) # values are given in 3dp
+
+                if Yi != -1:
+                    y = float(line[Yi+1:Yi+6])
+            
+                # convert x and y to imgPos from wPos
+                XmPos = x - mapping[0]
+                YmPos = y - mapping[1]
+                XimgLocal = XmPos - (pl[0][stateIdx] + originOffset[0]) # origin offset is added here to shift the preview according to the origin set by the user
+                YimgLocal = -(YmPos - (pl[1][stateIdx] + imDim[1][stateIdx] + originOffset[1])) # negative because img y is flipped compared to mpos y
+
+                Xpx = round(XimgLocal * 5)
+                Ypx = round(YimgLocal * 5)
+
+
+                xArr.append(Xpx)
+                yArr.append(Ypx) 
+
+
+    # plot figure
+    plt.figure()  
+    plt.imshow(plateImg)
+    # plt.axes().set_visible(False)
+
+    for i in range(len(xChar)):
+        plt.plot(xChar[i], yChar[i], color='blue')
+
+    # save file
+    directory = f"static/preview/{states[stateIdx]}"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    filename = f'platePreview_{datetimeString}{plate_num}.png'
+    filepath = os.path.join(directory, filename)
+    plt.savefig(filepath)
+    plt.close()
+    serverpath = directory + "/" + filename
+
+    print("returning server file path")
+    return serverpath
+
+
+def generate_gcode_web(state_idx, text_path, plate_num, engData, engDataMore, verbose=False): 
+    def safe_float(val): 
+        try: 
+            float(val)
+        except: 
+            if val == "": 
+                val = None
+            else:
+                raise ValueError(f"Invalid float value: {val}")
+    states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
+    # modify the settings file with depth and z_safe requirements
+    path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/settings.txt"
+    zcut = safe_float(engData["cutZ"])
+    zsafe = safe_float(engData["safeZ"])
+    xorigin = safe_float(engData["originX"])
+    yorigin = safe_float(engData["originY"])
+    gpostx = safe_float(engData['finalX'])
+    gposty = safe_float(engData["finalY"])
+    gpostz = safe_float(engData["finalZ"])
+    
+    gpost = (gpostx, gposty, gpostz)
+    origin_offset = (xorigin, yorigin)
+    feedRate = safe_float(engDataMore["feedRate"])
+    plungeRate = safe_float(engDataMore["plungeRate"])
+
+
+
+    # edit settings lines according to provided data
+    with open(path, "r") as f:
+        lines = f.readlines()
+
+
+
+    curr_config = {"ZCUT": zcut, "ZSAFE": zsafe, "XORIGIN": xorigin, "YORIGIN": yorigin, "GPOST": gpost}
+
+    for i, line in enumerate(lines):
+        # modify the cutting depth
+        if "ZCUT" in line and zcut is not None:
+            if verbose: 
+                print("OLD:", line.strip())
+            # parse with split instead of fixed indices
+            parts = line.split()
+            # parts: ['(fengrave_set', 'ZCUT', '2', ')']  or similar
+            # change the value part (usually index 2)
+            # old_depth = parts[2]
+            parts[2] = f"{zcut:.3f}"
+            # rebuild the line, preserving simple spacing and closing paren
+            lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        # modify the safe z height   
+        elif "ZSAFE" in line and zsafe is not None:
+            if verbose: 
+                print("OLD:", line.strip())
+            parts = line.split()
+            parts[2] = f"{zsafe:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}      {parts[2]} )\n"
+            if verbose:
+                print("NEW:", lines[i].strip())
+        
+        # modify the x_origin
+        elif "xorigin" in line and origin_offset[0] is not None:
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{origin_offset[0]:.3f}"
+            lines[i] = f"{parts[0]} {parts[1]}    {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+        
+        # modify the y_origin
+        elif "yorigin" in line and origin_offset[1] is not None:
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{origin_offset[1]:.3f}"
+            lines[i] = f"{parts[0]} {parts[1]}    {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+        
+        # modify the finish position 
+        elif "gpost" in line and gpost[0] is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            post_loc = f"X{gpost[0]:.3f} Y{gpost[1]:.3f} Z{gpost[2]:.3f}"
+            lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} {post_loc} {parts[6]} {parts[7]}  )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        # add the changes to feed and plunge rate
+        elif 'FEED' in line and feedRate is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{feedRate:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        elif 'PLUNGE' in line and plungeRate is not None:
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{plungeRate:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+
+            
+
+    with open(path, "w") as f:
+        f.writelines(lines)
+
+    # generate gcode
+    gcode_path = f"/home/pi/Documents/F-Engrave-1.76_src/output/{datetime.now()}_{plate_num}.ngc"
+    cmd = f'''
+    eng_text="$(<"{text_path}")"
+
+    xvfb-run -a python3 \
+    "/home/pi/Documents/F-Engrave-1.76_src/f-engrave.py" \
+    -g "/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/settings.txt" \
+    -f "/home/pi/Documents/F-Engrave-1.76_src/fonts/normal.cxf" \
+    -t "$eng_text" \
+    -b \
+    > "{gcode_path}"
+    '''
+
+    subprocess.run(
+        cmd,
+        shell=True,
+        executable="/bin/bash",
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    return gcode_path, curr_config
+
+
+def generate_gcode(state_idx, text_path, plate_num, depth=None, z_safe=None, origin_offset=None, finish_position=(0,115,15), verbose=False): 
     states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
     # modify the settings file with depth and z_safe requirements
     path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/settings.txt"
@@ -564,19 +798,24 @@ def generate_gcode(state_idx, text_path, plate_num, depth=None, z_safe=None, ori
     # just to read the lines
     for i, line in enumerate(lines): 
         if "ZCUT" in line: 
-            print("Current cutting depth line:", line.split()[2])
+            if verbose: 
+                print("Current cutting depth line:", line.split()[2])
             zcut = float(line.split()[2])
         if "ZSAFE" in line:
-            print("Current safe z height line:", line.split()[2])
+            if verbose: 
+                print("Current safe z height line:", line.split()[2])
             zsafe = float(line.split()[2])
         if "xorigin" in line: 
-            print("Current x origin line:", line.split()[2])
+            if verbose: 
+                print("Current x origin line:", line.split()[2])
             xorigin = float(line.split()[2])
         if "yorigin" in line:
-            print("Current y origin line:", line.split()[2])
+            if verbose: 
+                print("Current y origin line:", line.split()[2])
             yorigin = float(line.split()[2])
         if "gpost" in line:
-            print("Current finish position line:", line.split()[3], line.split()[4], line.split()[5])
+            if verbose: 
+                print("Current finish position line:", line.split()[3], line.split()[4], line.split()[5])
             gpostx = float(line.split()[3][1:])
             gposty = float(line.split()[4][1:])
             gpostz = float(line.split()[5][1:])
@@ -587,7 +826,8 @@ def generate_gcode(state_idx, text_path, plate_num, depth=None, z_safe=None, ori
     for i, line in enumerate(lines):
         # modify the cutting depth
         if "ZCUT" in line and depth is not None:
-            print("OLD:", line.strip())
+            if verbose: 
+                print("OLD:", line.strip())
             # parse with split instead of fixed indices
             parts = line.split()
             # parts: ['(fengrave_set', 'ZCUT', '2', ')']  or similar
@@ -596,39 +836,48 @@ def generate_gcode(state_idx, text_path, plate_num, depth=None, z_safe=None, ori
             parts[2] = f"{depth:.3f}"
             # rebuild the line, preserving simple spacing and closing paren
             lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} )\n"
-            print("NEW:", lines[i].strip())
+            if verbose: 
+                print("NEW:", lines[i].strip())
 
         # modify the safe z height   
         elif "ZSAFE" in line and z_safe is not None:
-            print("OLD:", line.strip())
+            if verbose: 
+                print("OLD:", line.strip())
             parts = line.split()
             parts[2] = f"{z_safe:.2f}"
             lines[i] = f"{parts[0]} {parts[1]}      {parts[2]} )\n"
-            print("NEW:", lines[i].strip())
+            if verbose:
+                print("NEW:", lines[i].strip())
         
         # modify the x_origin
-        elif "xorigin" in line and origin_offset is not None: 
-            print("OLD: ", line.strip())
+        elif "xorigin" in line and origin_offset is not None:
+            if verbose: 
+                print("OLD: ", line.strip())
             parts = line.split()
             parts[2] = f"{origin_offset[0]:.3f}"
             lines[i] = f"{parts[0]} {parts[1]}    {parts[2]} )\n"
-            print("NEW:", lines[i].strip())
+            if verbose: 
+                print("NEW:", lines[i].strip())
         
         # modify the y_origin
         elif "yorigin" in line and origin_offset is not None:
-            print("OLD: ", line.strip())
+            if verbose: 
+                print("OLD: ", line.strip())
             parts = line.split()
             parts[2] = f"{origin_offset[1]:.3f}"
             lines[i] = f"{parts[0]} {parts[1]}    {parts[2]} )\n"
-            print("NEW:", lines[i].strip())
+            if verbose: 
+                print("NEW:", lines[i].strip())
         
         # modify the finish position 
         elif "gpost" in line and finish_position is not None: 
-            print("OLD: ", line.strip())
+            if verbose: 
+                print("OLD: ", line.strip())
             parts = line.split()
             post_loc = f"X{finish_position[0]:.3f} Y{finish_position[1]:.3f} Z{finish_position[2]:.3f}"
             lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} {post_loc} {parts[6]} {parts[7]}  )\n"
-            print("NEW:", lines[i].strip())
+            if verbose: 
+                print("NEW:", lines[i].strip())
 
 
 
@@ -664,8 +913,251 @@ def generate_gcode(state_idx, text_path, plate_num, depth=None, z_safe=None, ori
 
     return gcode_path, curr_config
 
+# web based version that takes in inputs as a df already
+def generate_engraving_text_web(state_idx, plate_num, json, verbose=False): 
+    states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
+
+    template_path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/text.txt"
+    modtext_path = f"/home/pi/Documents/F-Engrave-1.76_src/output/eng_text_{datetime.now()}_{plate_num}_{states[state_idx]}.txt"
+
+    with open(template_path, "r") as f: 
+        template_lines = f.readlines()
+
+    # convert json to list
+    values = list(json.values())
+    
+    # NSW (CAPS/no comma format and will always be so)
+    if state_idx == 0: 
+        # filters values for commas and get rid of them for full stops
+        values = [value.replace(",", ".") if isinstance(value, str) else value for value in values]
+
+
+        modtext_lines = template_lines.copy()
+        j = 0
+        for i, line in enumerate(template_lines): 
+            newline = ""
+            if i != 1: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                if i == 7: 
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
+                    newline = newline + space_tokens[0] + values[j] + '\n'
+                    j += 1 
+                    modtext_lines[i] = newline
+                else: 
+                    for k in range(len(space_tokens)-1): # exclude the \n at the end
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
+                        newline = newline + space_tokens[k] + values[j]
+                        j += 1
+                    newline = newline + "\n"
+                    modtext_lines[i] = newline
+            else: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                for k in range(len(space_tokens)-1): # exclude the \n at the end
+                    newline = stuff_tokens[0] + space_tokens[k] + values[j]
+                    j += 1
+                newline = newline + "\n"
+                modtext_lines[i] = newline
+    
+
+    # QLD plates (comma format)
+    elif state_idx == 1: 
+        # convert the GVM and GCM values to comma format for the calibration to work 
+        if str(values[-4]).find(",") == -1: 
+            try: 
+                modGVM = int(values[-4])
+                values[-4] = f"{modGVM:,}"
+            except: 
+                pass
+        
+        if str(values[-3]).find(",") == -1:
+            try: 
+                modGCM = int(values[-3])
+                values[-3] = f"{modGCM:,}" 
+            except: 
+                pass
+
+        if str(values[-1]).find(",") == -1:
+            try: 
+                modATM = int(values[-1])
+                values[-1] = f"{modATM:,}"
+            except: 
+                pass
+        
+        if str(values[-2]).find(",") == -1:
+            try: 
+                modGTM = int(values[-2])
+                values[-2] = f"{modGTM:,}"
+            except: 
+                pass
+        
+
+
+        modtext_lines = template_lines.copy()
+        j = 0
+        for i, line in enumerate(template_lines): 
+            newline = ""
+            if i != 2: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                if i == 3: 
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
+                    newline = newline + space_tokens[0] + values[j] + '\n'
+                    j += 1 
+                    modtext_lines[i] = newline
+                elif i == 5:
+                    verbose and print(f"i: {i}, j: {j}, k: {k}")
+                    newline = newline + space_tokens[0] + values[j] + "\n"
+                    # newline = newline + space_tokens[0] + values[j] + '\n'
+                    j += 1
+                    modtext_lines[i] = newline  
+                else: 
+                    for k in range(len(space_tokens)-1): # exclude the \n at the end
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
+                        newline = newline + space_tokens[k] + values[j]
+                        j += 1
+                    newline = newline + "\n"
+                    modtext_lines[i] = newline
+            else: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                newline = stuff_tokens[0] + space_tokens[0] + values[j]
+                j += 1
+                newline = newline + "\n"
+                modtext_lines[i] = newline
+
+
+    # vic heavy plate (comma format)
+    elif state_idx == 2: 
+        # convert the GVM and GCM values to comma format for the calibration to work 
+        if str(values[-3].find(",")) == -1: 
+            try: 
+                if values[-3] != "":
+                    modGVM = int(values[-3])
+                    values[-3] = f"{modGVM:,}"
+            except: 
+                pass
+        
+        if str(values[-2].find(",")) == -1:
+            try: 
+                if values[-2] != "": 
+                    modGCM = int(values[-2])
+                    values[-2] = f"{modGCM:,}"
+
+            except:
+                pass
+
+
+        modtext_lines = template_lines.copy()
+        j = 0
+        for i, line in enumerate(template_lines): 
+            newline = ""
+            if i not in [1, 8]: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                if i == 2: 
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
+                    newline = newline + space_tokens[0] + values[j] + '\n'
+                    j += 1 
+                    modtext_lines[i] = newline
+                elif i == 4:  # tyre size line with front and rear
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
+                    newline = newline + space_tokens[0] + values[j] + "\n"
+                    j += 1
+                    modtext_lines[i] = newline                    
+                else: 
+                    for k in range(len(space_tokens)-1): # exclude the \n at the end
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
+                        newline = newline + space_tokens[k] + values[j]
+                        j += 1
+                    newline = newline + "\n"
+                    modtext_lines[i] = newline
+            elif i == 8: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                newline = stuff_tokens[0]
+                newline = newline + "\n"
+                modtext_lines[i] = newline
+            else: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                for k in range(len(space_tokens)-1): # exclude the \n at the end
+                    newline = stuff_tokens[0] + space_tokens[k] + values[j]
+                    j += 1
+                newline = newline + "\n"
+                modtext_lines[i] = newline
+
+    # VIC light plate (comma format and could be)
+    elif state_idx == 3: 
+        # convert the GVM and GCM values to comma format for the calibration to work 
+        if str(values[-3].find(",")) == -1: 
+            try: 
+                if values[-3].isdigit(): 
+                    modGVM = int(values[-3])
+                    values[-3] = f"{modGVM:,}"
+            except:
+                pass
+        if str(values[-2].find(",")) == -1:
+            try: 
+                if values[-2].isdigit():
+                    modGCM = int(values[-2])
+                    values[-2] = f"{modGCM:,}" 
+            except: 
+                pass
+        
+
+        modtext_lines = template_lines.copy()
+        j = 0
+        for i, line in enumerate(template_lines): 
+            newline = ""
+            if i != 1: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                if i == 4:  # line with mod codes
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
+                    newline = newline + space_tokens[0] + values[j] + '\n'
+                    j += 1 
+                    modtext_lines[i] = newline
+                else: 
+                    for k in range(len(space_tokens)-1): # exclude the \n at the end
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
+                        newline = newline + space_tokens[k] + values[j]
+                        j += 1
+                    newline = newline + "\n"
+                    modtext_lines[i] = newline
+            else: 
+                space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
+                stuff_tokens = line.split()
+                verbose and print(stuff_tokens, space_tokens)
+                # exclude the \n at the end
+                newline = stuff_tokens[0] + space_tokens[0] + values[j]
+                j += 1
+                newline = newline + "\n"
+                modtext_lines[i] = newline
+
+
+    with open(modtext_path, "w") as f:
+         f.writelines(modtext_lines)
+
+
+
+
+
+    return modtext_path, modtext_lines
+
+
+
 # works
-def generate_engraving_text(state_idx, plate_num): 
+def generate_engraving_text(state_idx, plate_num, verbose=False): 
     states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
 
     template_path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/text.txt"
@@ -677,7 +1169,7 @@ def generate_engraving_text(state_idx, plate_num):
     print("------------------------------------------------------")
     print(f"Please input the details of the {states[state_idx]} plate, and press 'Enter'. ")
     
-    # NSW
+    # NSW (CAPS/no comma format and will always be so)
     if state_idx == 0: 
         lsc_num = str(input("Licence Number (press Enter for 130009): "))
         if lsc_num == "": 
@@ -703,9 +1195,34 @@ def generate_engraving_text(state_idx, plate_num):
             modATM = "----"
         modCode = str(input("Modification Codes (seperate with '. '): ")) # might get comma, write a function to chop it up to just seperated by fullstops
         
-        
+        # if modGVM == "":
+        #     modGVM = "   "
+        # if front_tyre == "":
+        #     front_tyre = "       "
+        # if engine_num == "":
+        #     engine_num = "        " # find out a way to measure the length of this so that the spacing is always correct
+        # if lsc_num == "":
+        #     lsc_num = "    "
+
+        # filters values for commas and get rid of them for full stops
+        lsc_num = lsc_num.replace(",", ".")
+        date = date.replace(",", ".")
+        cert_num = cert_num.replace(",", ".")
+        VIN = VIN.replace(",", ".")
+        Eng_num = Eng_num.replace(",", ".")
+        Seat_cap = Seat_cap.replace(",", ".")
+        front_tyre = front_tyre.replace(",", ".")
+        rear_tyre = rear_tyre.replace(",", ".")
+        modGVM = modGVM.replace(",", ".")
+        modGCM = modGCM.replace(",", ".")
+        modGTM = modGTM.replace(",", ".")
+        modATM = modATM.replace(",", ".")
+        modCode = modCode.replace(",", ".")
+
+
         values = [lsc_num, date, cert_num, VIN, Eng_num, Seat_cap, front_tyre, rear_tyre, modGVM, modGCM, modGTM, modATM, modCode]
-        print(values[12])
+        if verbose: 
+            print(values[12])
         modtext_lines = template_lines.copy()
         j = 0
         for i, line in enumerate(template_lines): 
@@ -713,15 +1230,15 @@ def generate_engraving_text(state_idx, plate_num):
             if i != 1: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 if i == 7: 
-                    print(f"i: {i}, j: {j}, k : {k}")
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
                     newline = newline + space_tokens[0] + values[j] + '\n'
                     j += 1 
                     modtext_lines[i] = newline
                 else: 
                     for k in range(len(space_tokens)-1): # exclude the \n at the end
-                        print(f"i: {i}, j: {j}, k : {k}")
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
                         newline = newline + space_tokens[k] + values[j]
                         j += 1
                     newline = newline + "\n"
@@ -729,14 +1246,14 @@ def generate_engraving_text(state_idx, plate_num):
             else: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 for k in range(len(space_tokens)-1): # exclude the \n at the end
                     newline = stuff_tokens[0] + space_tokens[k] + values[j]
                     j += 1
                 newline = newline + "\n"
                 modtext_lines[i] = newline
     
-    # QLD plates
+    # QLD plates (comma format)
     elif state_idx == 1: 
         lsc_num = str(input("Accreditation No: "))
         date = str(input("Date (Press Enter for TODAY): ")) # can make this automatic
@@ -748,8 +1265,7 @@ def generate_engraving_text(state_idx, plate_num):
         Mod_bod = str(input("Modification By: "))
         modCode = str(input("Modification Codes (seperate with '. '): ")) # might get comma, write a function to chop it up to just seperated by fullstops
         VIN = str(input("VIN: "))
-        front_tyre = str(input("Tyre Size: Front  "))
-        rear_tyre = str(input("Tyre Size: Rear  "))
+        tyre_size = str(input("Tyre Size(If both front & Rear please type Front: size Rear: size):  "))
         # tyre_size = str(input("Tyre Size: "))
         Seat_cap = str(input("Seating Capacity: "))
         modGVM = str(input("Modification GVM: "))
@@ -761,9 +1277,17 @@ def generate_engraving_text(state_idx, plate_num):
         if modATM == "": 
             modATM = "----"
         
+        # convert the GVM and GCM values to comma format for the calibration to work 
+        if modGVM.find(",") == -1: 
+            modGVM = int(modGVM)
+            modGVM = f"{modGVM:,}"
         
-        values = [lsc_num, date, cert_num, Mod_bod, modCode, VIN, front_tyre, rear_tyre, Seat_cap, modGVM, modGCM, modGTM, modATM]
-        print(values[12])
+        if modGCM.find(",") == -1:
+            modGCM = int(modGCM)
+            modGCM = f"{modGCM:,}" 
+        
+        values = [lsc_num, date, cert_num, Mod_bod, modCode, VIN, tyre_size, Seat_cap, modGVM, modGCM, modGTM, modATM]
+        # print(values[12])
         modtext_lines = template_lines.copy()
         j = 0
         for i, line in enumerate(template_lines): 
@@ -771,21 +1295,21 @@ def generate_engraving_text(state_idx, plate_num):
             if i != 2: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 if i == 3: 
-                    print(f"i: {i}, j: {j}, k : {k}")
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
                     newline = newline + space_tokens[0] + values[j] + '\n'
                     j += 1 
                     modtext_lines[i] = newline
                 elif i == 5:
-                    print(f"i: {i}, j: {j}, k: {k}")
-                    newline = newline + space_tokens[0] + "FRONT: " + values[j] + "  REAR: " + values[j+1] + "\n"
+                    verbose and print(f"i: {i}, j: {j}, k: {k}")
+                    newline = newline + space_tokens[0] + values[j] + "\n"
                     # newline = newline + space_tokens[0] + values[j] + '\n'
-                    j += 2
+                    j += 1
                     modtext_lines[i] = newline  
                 else: 
                     for k in range(len(space_tokens)-1): # exclude the \n at the end
-                        print(f"i: {i}, j: {j}, k : {k}")
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
                         newline = newline + space_tokens[k] + values[j]
                         j += 1
                     newline = newline + "\n"
@@ -793,13 +1317,13 @@ def generate_engraving_text(state_idx, plate_num):
             else: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 newline = stuff_tokens[0] + space_tokens[0] + values[j]
                 j += 1
                 newline = newline + "\n"
                 modtext_lines[i] = newline
 
-    # vic heavy plate
+    # vic heavy plate (comma format)
     elif state_idx == 2: 
         lsc_num = str(input("VASS Certificate No: "))
         date = str(input("Date (Press Enter for TODAY): ")) # can make this automatic
@@ -809,8 +1333,7 @@ def generate_engraving_text(state_idx, plate_num):
             # print(date)
         modCode = str(input("Modification Codes (seperate with '. '): ")) # might get comma, write a function to chop it up to just seperated by fullstops
         VIN = str(input("VIN: "))
-        front_tyre = str(input("Tyre Size: Front  "))
-        rear_tyre = str(input("Tyre Size: Rear  "))
+        tyre_size = str(input("Tyre Size(If both front & Rear please type 'Front: size    Rear: size'):  "))
         Mod_axles = str(input("Modified Number of Axles: "))
         ADR_cat = str(input("ADR CAT: "))
         Seat_cap = str(input("Seating Capacity: "))
@@ -819,10 +1342,21 @@ def generate_engraving_text(state_idx, plate_num):
         modGCM = str(input("Modification GCM/GTM: "))
         ser_no = str(input("Serial Number: "))
         
+        # convert the GVM and GCM values to comma format for the calibration to work 
+        if modGVM.find(",") == -1: 
+            if modGVM != "":
+                modGVM = int(modGVM)
+                modGVM = f"{modGVM:,}"
         
-        values = [lsc_num, date, modCode, VIN, front_tyre, 
-                  rear_tyre, Mod_axles, ADR_cat, Seat_cap, bod_style, modGVM, modGCM, ser_no]
-        print(values[12])
+        if modGCM.find(",") == -1:
+            if modGCM != "": 
+                modGCM = int(modGCM)
+                modGCM = f"{modGCM:,}" 
+
+        
+        values = [lsc_num, date, modCode, VIN, tyre_size, 
+                  Mod_axles, ADR_cat, Seat_cap, bod_style, modGVM, modGCM, ser_no]
+
         modtext_lines = template_lines.copy()
         j = 0
         for i, line in enumerate(template_lines): 
@@ -830,20 +1364,20 @@ def generate_engraving_text(state_idx, plate_num):
             if i not in [1, 8]: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 if i == 2: 
-                    print(f"i: {i}, j: {j}, k : {k}")
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
                     newline = newline + space_tokens[0] + values[j] + '\n'
                     j += 1 
                     modtext_lines[i] = newline
-                elif i == 4: 
-                    print(f"i: {i}, j: {j}, k : {k}")
-                    newline = newline + space_tokens[0] + "FRONT: " + values[j] + "    REAR: " + values[j+1] + "\n"
-                    j += 2
+                elif i == 4:  # tyre size line with front and rear
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
+                    newline = newline + space_tokens[0] + values[j] + "\n"
+                    j += 1
                     modtext_lines[i] = newline                    
                 else: 
                     for k in range(len(space_tokens)-1): # exclude the \n at the end
-                        print(f"i: {i}, j: {j}, k : {k}")
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
                         newline = newline + space_tokens[k] + values[j]
                         j += 1
                     newline = newline + "\n"
@@ -851,21 +1385,21 @@ def generate_engraving_text(state_idx, plate_num):
             elif i == 8: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 newline = stuff_tokens[0]
                 newline = newline + "\n"
                 modtext_lines[i] = newline
             else: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 for k in range(len(space_tokens)-1): # exclude the \n at the end
                     newline = stuff_tokens[0] + space_tokens[k] + values[j]
                     j += 1
                 newline = newline + "\n"
                 modtext_lines[i] = newline
 
-    # VIC light plate
+    # VIC light plate (comma format and could be)
     elif state_idx == 3: 
         ste = str(input("State: "))
         date = str(input("Date (Press Enter for TODAY): ")) # can make this automatic
@@ -884,6 +1418,15 @@ def generate_engraving_text(state_idx, plate_num):
         modGCM = str(input("Modification GCM: "))        
         ser_no = str(input("Reference/Serial Number: "))
         
+        # convert the GVM and GCM values to comma format for the calibration to work 
+        if modGVM.find(",") == -1: 
+            if modGVM.isdigit(): 
+                modGVM = int(modGVM)
+                modGVM = f"{modGVM:,}"
+        if modGCM.find(",") == -1:
+            if modGCM.isdigit():
+                modGCM = int(modGCM)
+                modGCM = f"{modGCM:,}" 
         
         values = [ste, date, cert_num, yr_mk_mod, VIN, Seat_cap, ADR_cat, bod_style, modCode, modGVM, modGCM, ser_no]
         modtext_lines = template_lines.copy()
@@ -893,15 +1436,15 @@ def generate_engraving_text(state_idx, plate_num):
             if i != 1: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 if i == 4:  # line with mod codes
-                    print(f"i: {i}, j: {j}, k : {k}")
+                    verbose and print(f"i: {i}, j: {j}, k : {k}")
                     newline = newline + space_tokens[0] + values[j] + '\n'
                     j += 1 
                     modtext_lines[i] = newline
                 else: 
                     for k in range(len(space_tokens)-1): # exclude the \n at the end
-                        print(f"i: {i}, j: {j}, k : {k}")
+                        verbose and print(f"i: {i}, j: {j}, k : {k}")
                         newline = newline + space_tokens[k] + values[j]
                         j += 1
                     newline = newline + "\n"
@@ -909,7 +1452,7 @@ def generate_engraving_text(state_idx, plate_num):
             else: 
                 space_tokens = re.findall("\s+", line)   # /s is whitespace character, + means to find all the following whitespace characters that are the same
                 stuff_tokens = line.split()
-                print(stuff_tokens, space_tokens)
+                verbose and print(stuff_tokens, space_tokens)
                 # exclude the \n at the end
                 newline = stuff_tokens[0] + space_tokens[0] + values[j]
                 j += 1
@@ -928,11 +1471,36 @@ def generate_engraving_text(state_idx, plate_num):
 
 
 
+def get_plate_num(state, textData): 
+    # generate the plate serial number from scarch if not already provided
+    # state is a str within [QLD, NSW, VIC_Heavy, VIC_Light]
+    # textData is a json
+    states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
+    if textData["plateSerialNumber"] != "":
+        return str(textData["plateSerialNumber"])
+    else: 
+        config_path = "/home/pi/Documents/Engraving_codebase/script_config.json"
+        with open(config_path, "r") as f:
+            config_dict = json.load(f)
+            sesh_config = config(**config_dict)  # unpacking dictionary to config dataclass
 
+            idx = states.index(state)
 
+            if idx != -1:
+                plate_num = sesh_config.plate_counters[idx] + 1
+                sesh_config.plate_counters[idx] = plate_num
 
-if __name__=="__main__":
-    # code status: all seperate code tested and working universal mapping synchronisation between calibration not yet verified
+                with open(config_path, "w") as f: 
+                    # convert config dataclass to dictionary 
+                    json.dump(asdict(sesh_config), f, indent=4)
+
+                return str(plate_num)
+            else:
+                print("State not found, cannot generate plate number.")
+                return "000000"
+
+def main(verbose=False):
+    # code status: all seperate code tested and working universal mapping synchronisation between calibration not yet verified - need to test pyplot function
     config_path = "/home/pi/Documents/Engraving_codebase/script_config.json"
     with open(config_path, "r") as f:
         config_dict = json.load(f)
@@ -958,9 +1526,6 @@ if __name__=="__main__":
     # wPos = (0, 125, 15)
     keyboardInput = getch().lower()
     
-
-    # unlock and return to original position
-    unlock(ser)  
     if sesh_config.islath:
         mapping = sesh_config.mapping_lath
     else:
@@ -968,7 +1533,8 @@ if __name__=="__main__":
 
     # move to last finished work Position
     try: 
-        ser = homeNcalibrate(ser, mapping, sesh_config.finish_wPos)
+        unlock(ser)  
+        ser = homeNcalibrate(ser, mapping, sesh_config.finish_wPos, verbose=verbose)
         print_main_menu()
     except: 
         print("Homing Failed, please ensure there are no obstructions and try again.")
@@ -979,140 +1545,227 @@ if __name__=="__main__":
     while keyboardInput != "n":
         keyboardInput = getch().lower()
         if keyboardInput == "1": 
-            unlock(ser)
-            print("Machine Unlocked!")
-            print_main_menu()
+            try: 
+                unlock(ser)
+                print("Machine Unlocked!")
+                print_main_menu()
+            except: 
+                print("Unlock Failed, check if E-stop is pressed and try again. ")
+                print_main_menu()
         if keyboardInput == "2": 
             try: 
-                ser = homeNcalibrate(ser, mapping, sesh_config.wPos_home)
+                ser = homeNcalibrate(ser, mapping, sesh_config.wPos_home, verbose=verbose)
                 print_main_menu()
             except: 
                 print("Homing Failed, please ensure there are no obstructions and try again.")
                 print_main_menu()
         if keyboardInput == "3": 
             try: 
-                ser = verify_wPos(ser, sesh_config.mapping_work)
+                ser = verify_wPos(ser, sesh_config.mapping_work, verbose=verbose)
                 print_main_menu()
             except: 
                 print("Verification Failed.")
                 print_main_menu()
         if keyboardInput == "4": 
-            islath = input("Calibhrating Lath zero position? (y/n): ").lower()
-            if islath == "y":
-                ser, mapping = jog(ser, sesh_config.mapping_lath)
-                sesh_config.mapping_lath = mapping
-                sesh_config.islath = True
-            if islath != "y":
-                ser, mapping = jog(ser, sesh_config.mapping_work)
-                sesh_config.mapping_work = mapping     
-                sesh_config.islath = False         
+            try: 
+                islath = input("Calibhrating Lath zero position? (y/n): ").lower()
+                if islath == "y":
+                    ser, mapping = jog(ser, sesh_config.mapping_lath)
+                    sesh_config.mapping_lath = mapping
+                    sesh_config.islath = True
+                if islath != "y":
+                    ser, mapping = jog(ser, sesh_config.mapping_work)
+                    sesh_config.mapping_work = mapping     
+                    sesh_config.islath = False         
 
-            with open(config_path, "w") as f: 
-                # convert config dataclass to dictionary 
-                json.dump(asdict(sesh_config), f, indent=4)
-            print_main_menu()
+                with open(config_path, "w") as f: 
+                    # convert config dataclass to dictionary 
+                    json.dump(asdict(sesh_config), f, indent=4)
+                print_main_menu()
+            except: 
+                print("Jog Failed, please try again.")
+                print_main_menu()
         if keyboardInput == "5": 
-            ser, mapping = zero_xy(ser)
-            sesh_config.mapping_work = mapping
+            try: 
+                ser, mapping = zero_xy(ser)
+                sesh_config.mapping_work = mapping
 
-            with open(config_path, "w") as f:
-                # convert config dataclass to dictionary 
-                json.dump(asdict(sesh_config), f, indent=4)
-            print_main_menu()
+                with open(config_path, "w") as f:
+                    # convert config dataclass to dictionary 
+                    json.dump(asdict(sesh_config), f, indent=4)
+                print_main_menu()
+            except:
+                print("Zeroing Failed, please try again.")
+                print_main_menu()
         if keyboardInput == "6": 
-            ser, mapping = zero_z(ser)
-            sesh_config.mapping_work = mapping
-            with open(config_path, "w") as f:
-                # convert config dataclass to dictionary 
-                json.dump(asdict(sesh_config), f, indent=4)
-            print_main_menu()
+            try: 
+                ser, mapping = zero_z(ser)
+                sesh_config.mapping_work = mapping
+                with open(config_path, "w") as f:
+                    # convert config dataclass to dictionary 
+                    json.dump(asdict(sesh_config), f, indent=4)
+                print_main_menu()
+            except: 
+                print("Zeroing Failed, please try again. ")
+                print_main_menu()
         if keyboardInput == "7": 
-            depth = float(input("Input the lath depth (mm) and press enter: "))
-            bed_dim_1 = float(input("Input the bed width (mm) and press enter: "))
-            bed_dim_2 = float(input("Input the bed height (mm) and press enter: "))
-            sesh_config.beddim = (bed_dim_1, bed_dim_2)
-            with open(config_path, "w") as f:  
-                # convert config dataclass to dictionary 
-                json.dump(asdict(sesh_config), f, indent=4)
-            
-            _ = input("Please check that a Flat drillbit is installed, and press Enter. ")
-            bed_dim = (bed_dim_1, bed_dim_2)
-            if mapping: 
-                sesh_config.mapping_lath = mapping # stores the mapping if it's been changed
-            _, gcode_path, _ = calibrate_spoilboard(depth, bed_dim)
-            write_gcode(ser, gcode_path, sesh_config.mapping_lath)
+            try: 
+                depth = float(input("Input the lath depth (mm) and press enter: "))
+                bed_dim_1 = float(input("Input the bed width (mm) and press enter: "))
+                bed_dim_2 = float(input("Input the bed height (mm) and press enter: "))
+                sesh_config.beddim = (bed_dim_1, bed_dim_2)
+                with open(config_path, "w") as f:  
+                    # convert config dataclass to dictionary 
+                    json.dump(asdict(sesh_config), f, indent=4)
 
-            # edit the mapping to reflect the new z height 
-            sesh_config.mapping_lath = (sesh_config.mapping_lath[0], sesh_config.mapping_lath[1], sesh_config.mapping_lath[2] + abs(depth))
-            sesh_config.mapping_work = (sesh_config.mapping_work[0], sesh_config.mapping_work[1], sesh_config.mapping_work[2] + abs(depth))
-            with open(config_path, "w") as f:
-                # convert config dataclass to dictionary 
-                json.dump(asdict(sesh_config), f, indent=4)
-            print_main_menu()
+                _ = input("Please check that a Flat drillbit is installed, and press Enter. ")
+                bed_dim = (bed_dim_1, bed_dim_2)
+                if mapping: 
+                    sesh_config.mapping_lath = mapping # stores the mapping if it's been changed
+                _, gcode_path, _ = calibrate_spoilboard(depth, bed_dim)
+                write_gcode(ser, gcode_path, sesh_config.mapping_lath, verbose=verbose)
+
+                # edit the mapping to reflect the new z height 
+                sesh_config.mapping_lath = (sesh_config.mapping_lath[0], sesh_config.mapping_lath[1], sesh_config.mapping_lath[2] + abs(depth))
+                sesh_config.mapping_work = (sesh_config.mapping_work[0], sesh_config.mapping_work[1], sesh_config.mapping_work[2] + abs(depth))
+                with open(config_path, "w") as f:
+                    # convert config dataclass to dictionary 
+                    json.dump(asdict(sesh_config), f, indent=4)
+                print_main_menu()
+            except: 
+                print("Input errpr, please try again ")
+                print_main_menu()
         if keyboardInput == "8":
-            again = None
-            if again != "y":
-                print("---------------------------------------")
-                print("1 - NSW \n2 - QLD \n3- VIC_Heavy\n4 - VIC_Light")
-                state_idx =  int(input("Please select the plate type: ")) - 1
-                plate_num = input("Please input plate serial number(press enter for default): ")
-                if plate_num == "": 
-                    plate_num = f"{sesh_config.year}_{state_idx}{(sesh_config.plate_counter[state_idx] + 1):03d}"
-                    sesh_config.plate_counter = list(sesh_config.plate_counter)
-                    sesh_config.plate_counter[state_idx] += 1
-                    sesh_config.plate_counter = tuple(sesh_config.plate_counter)
-                    print(plate_num)
-                    with open(config_path, "w") as f:
-                        # convert config dataclass to dictionary 
-                        json.dump(asdict(sesh_config), f, indent=4)
-                # make a JSON and a way to read the plate_num
-                else: 
-                    plate_num = int(plate_num)
-
-                # generate the text
+            print("---------------------------------------")
+            print("1 - NSW \n2 - QLD \n3- VIC_Heavy\n4 - VIC_Light")
+            while True: 
                 try: 
-                    eng_textpath, eng_textlines = generate_engraving_text(state_idx, plate_num)
+                    state_idx =  int(input("Please select the plate type: ")) - 1
+                    plate_num = input("Please input plate serial number(press enter for default): ")
+                    if plate_num == "": 
+                        plate_num = f"{sesh_config.year}_{state_idx}{(sesh_config.plate_counter[state_idx] + 1):03d}"
+                        sesh_config.plate_counter = list(sesh_config.plate_counter)
+                        sesh_config.plate_counter[state_idx] += 1
+                        sesh_config.plate_counter = tuple(sesh_config.plate_counter)
+                        verbose and print(plate_num)
+                        with open(config_path, "w") as f:
+                            # convert config dataclass to dictionary 
+                            json.dump(asdict(sesh_config), f, indent=4)
+                    # make a JSON and a way to read the plate_num
+                    else: 
+                        plate_num = int(plate_num)
+                    break
+                except KeyboardInterrupt: 
+                    break
                 except: 
-                    print("Error generating engraving text, please try again.")
-                    print_main_menu()
-                    continue
-
-                # check if engraving settings need to be changed
-                depth = input("Enter changes to cutting depth in mm (press Enter for default): ")
-                z_safe = input("Enter new safe z height in mm (press Enter for default): ")
-                origin_offset = input("Enter new origin offset as 'x,y' in mm (press Enter for default): ")
-                finish_position = input("Enter new finish position as 'x,y,z' in mm (press Enter for default): ")
-                if finish_position == "": 
-                    finish_position = (0,125,20)
-                if depth == "": 
-                    depth = None
-                else: 
-                    depth = float(depth)
-                if z_safe == "":
-                    z_safe = None
-                if origin_offset == "":
-                    origin_offset = None
+                    print("Serial number unavaliable or state not found, please try again")
 
 
-
-
-                # write the gcode
-                try:
-                    gcode_path, curr_config = generate_gcode(state_idx, eng_textpath, plate_num, depth=depth, z_safe=z_safe, origin_offset=origin_offset, finish_position=finish_position)
+            # generate the text
+            try: 
+                eng_textpath, eng_textlines = generate_engraving_text(state_idx, plate_num, verbose=verbose)
+            except: 
+                print("Error generating engraving text, please try again.")
+                print_main_menu()
+                continue
+            # check if engraving settings need to be changed
+            while True: 
+                try: 
+                    depth = input("Enter cutting depth in mm (press Enter for default): ")
+                    z_safe = input("Enter new safe z height in mm (press Enter for default): ")
+                    origin_offset = input("Enter new origin offset as 'x,y' in mm (press Enter for default): ")
+                    finish_position = input("Enter new finish position as 'x,y,z' in mm (press Enter for default): ")
+                    if finish_position == "": 
+                        finish_position = (0,115,15)
+                    else: 
+                        finish_position = tuple(float(i) for i in finish_position.split(","))
+                    if depth == "": 
+                        depth = None
+                    else: 
+                        depth = float(depth)
+                    if z_safe == "":
+                        z_safe = None
+                    else: 
+                        z_safe = float(z_safe)
+                    if origin_offset == "":
+                        origin_offset = None
+                    else: 
+                        origin_offset = tuple(float(i) for i in origin_offset.split(","))
+                    break
+                except KeyboardInterrupt: 
+                    break
                 except: 
-                    print("Error generating gcode, please try again.")
-                    print_main_menu()
-                    continue
-                write_gcode(ser, gcode_path)
-                # impliment a again? function here 
-                print("---------------------------------------")
-                print("Engraving Complete!")
-                # print(f"Current Config: \n ZSAFE:  {curr_config["ZSAFE"]} \n ZCUT: {curr_config["ZCUT"]} \n XORIGIN: {curr_config["XORIGIN"]} \n YORIGIN: {curr_config["YORIGIN"]} \n GPOST: {curr_config["GPOST"]} ")
-                again = input("Please check Engraving quality. Press 'y' if satisfactory, 'n' to repeat: ").lower()
+                    print("Input error, please check your input and try again. ")
+            # write the gcode
+            try:
+                gcode_path, curr_config = generate_gcode(state_idx, eng_textpath, plate_num, 
+                                                         depth=depth, z_safe=z_safe, 
+                                                         origin_offset=origin_offset, 
+                                                         finish_position=finish_position, 
+                                                         verbose=verbose)
+            except: 
+                print("Error generating gcode, please try again.")
+                print_main_menu()
+                continue
+            print("Engraving...")
+            write_gcode(ser, gcode_path, verbose=verbose)
+            
+            # again function to re-engrave if required
+            print("---------------------------------------")
+            print("Engraving Complete!")
+            print(f"Current Config: \n ZSAFE:  {curr_config['ZSAFE']} \n ZCUT: {curr_config['ZCUT']} \n XORIGIN: {curr_config['XORIGIN']} \n YORIGIN: {curr_config['YORIGIN']} \n GPOST: {curr_config['GPOST']} ")
+            again = input("Please check Engraving quality. Press 'y' if satisfactory, 'n' to repeat: ").lower()
+
+            while again != "y":
+                try: 
+                    depth = input("Enter cutting depth in mm (press Enter for default): ")
+                    z_safe = input("Enter new safe z height in mm (press Enter for default): ")
+                    origin_offset = input("Enter new origin offset as 'x,y' in mm (press Enter for default): ")
+                    finish_position = input("Enter new finish position as 'x,y,z' in mm (press Enter for default): ")
+                    if finish_position == "": 
+                        finish_position = (0,115,15)
+                    else: 
+                        finish_position = tuple(float(i) for i in finish_position.split(","))
+                    if depth == "": 
+                        depth = None
+                    else: 
+                        depth = float(depth)
+                    if z_safe == "":
+                        z_safe = None
+                    else: 
+                        z_safe = float(z_safe)
+                    if origin_offset == "":
+                        origin_offset = None
+                    else: 
+                        origin_offset = tuple(float(i) for i in origin_offset.split(","))
+                    # write the gcode
+                    try:
+                        gcode_path, curr_config = generate_gcode(state_idx, eng_textpath, plate_num, 
+                                                                 depth=depth, z_safe=z_safe, 
+                                                                 origin_offset=origin_offset, 
+                                                                 finish_position=finish_position,
+                                                                 verbose=verbose)
+                    except: 
+                        print("Error generating gcode, please try again.")
+                        print_main_menu()
+                        continue
+                    write_gcode(ser, gcode_path, verbose=verbose)
+
+                    print("---------------------------------------")
+                    print("Engraving Complete!")
+                    print(f"Current Config: \n ZSAFE:  {curr_config['ZSAFE']} \n ZCUT: {curr_config['ZCUT']} \n XORIGIN: {curr_config['XORIGIN']} \n YORIGIN: {curr_config['YORIGIN']} \n GPOST: {curr_config['GPOST']} ")
+                    again = input("Please check Engraving quality. Press 'y' if satisfactory, 'n' to repeat: ").lower()
+                except KeyboardInterrupt: 
+                    break
+                except: 
+                    print("Input error, please try again. ")
 
             print_main_menu()
 
 
+
+
+    # exiting scripts
     ser.write(b"?\n")
     string = ser.read(100).decode()
     MPos = string[string.index("M")+5:string.index("W")-1]
@@ -1134,14 +1787,6 @@ if __name__=="__main__":
     print("-------------------------------------------------------------------------------")       
     
 
-    # port = scan_grbl_port(115200)
-    # gcode_path = "108205-5.ngc"
-    # if port:
-    #     print("Grbl Device on port: ", port)
-    #     ser = verify_wPos(send_wakeup(port=port))
-    #     # seems to reset
-    #     jog(ser)
-        
-    #     write_gcode(ser, gcode_path)
-    # else: 
-    #     print("no Grbl Device found")
+
+if __name__=="__main__": 
+    main(verbose=False)

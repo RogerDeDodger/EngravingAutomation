@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>3018 CNC Dashboard</h1>
+
+<div>
+
+<h3>Machine Position</h3>
+
+X: <span id="mx"></span>
+Y: <span id="my"></span>
+Z: <span id="mz"></span>
+
+</div>
+
+
+<hr>
+
+
+<h3>Live Plot</h3>
+
+<img id="plot" width="600">
+
+
+<hr>
+
+
+<button onclick="toggleMenu()">More Options</button>
+
+<div id="menu" style="display:none">
+
+<select>
+<option>Option A</option>
+<option>Option B</option>
+</select>
+
+</div>
+
+
+<script src="/static/script.js"></script>
+
+{% endblock %}

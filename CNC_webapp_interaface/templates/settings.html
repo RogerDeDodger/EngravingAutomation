@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>Settings</h1>
+
+Feedrate
+
+<input id="feedrate" value="{{settings.feedrate}}">
+
+Tool
+
+<select id="tool">
+<option>endmill</option>
+<option>vbit</option>
+</select>
+
+<button onclick="saveSettings()">Save</button>
+
+<div id="msg"></div>
+
+<script src="/static/script.js"></script>
+
+{% endblock %}
