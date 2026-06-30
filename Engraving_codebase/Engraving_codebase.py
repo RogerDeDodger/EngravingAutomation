@@ -63,6 +63,10 @@ class config:
     beddim: tuple = (120, 80)
     year: str = str(datetime.now().year)[2:]
     plate_counter: tuple = (0, 0, 0, 0)  # NSW, QLD, VIC_Heavy, VIC_Light
+    avg_vars: tuple = (0, 0, 0)  # y, x, u
+    avg_n: int = 0  # number of samples for time estimate
+    sum_vars: tuple = (0, 0, 0, 0, 0, 0, 0)  # xi^2, xi, xiui, xiyi, ui, ui^2, uiyi
+
 
 
 
@@ -90,8 +94,8 @@ def send_wakeup(ser=None, port="/dev/ttyUSB0",baud=115200):
         return ser
     else: 
         ser = serial.Serial(port, baud, timeout=1)
-        ser.write(b"\r\n\r\n")
         time.sleep(1)
+        ser.write(b"\r\n\r\n")
         ser.reset_input_buffer()
         return ser
 
@@ -151,7 +155,7 @@ def homeNcalibrate(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25), v
     string = ser.read(100).decode()
     ser.reset_input_buffer()
     ser.write(b"$H\n")
-    time.sleep(1) # NEED /n to execute the command
+     # NEED /n to execute the command
 
     wait_for_movement_completion(ser,"$H\n", verbose=verbose)
     mPos = (wPos[0] - mapping[0], wPos[1] - mapping[1], wPos[2] - mapping[2])
@@ -201,20 +205,21 @@ def wait_for_idle(ser):
         if "<Idle" in status:
             return
 
-def write_gcode(ser, g_code_path, verbose=False):
+def write_gcode(ser, g_code_path, spindle_travel=None, spindle_stops=None, verbose=False):
+    start_time = time.perf_counter()
     file = open(g_code_path,'r')
     if verbose: 
         print("file opened")
     # send wakeup to ser
     ser.write(b'\r\n\r\n') 
     time.sleep(1)
-    if verbose: 
-        print("going to zero X and Y in work cordinates. ")
-    ser.write(str.encode("G0 X0 Y0 Z10" + "\n"))
-    time.sleep(10)
-    if verbose: 
-        print("going to approximate top right corner of plate in work cordinates.0")
-    ser.write(str.encode("G0 X90 Y49 Z10" + "\n"))
+    # if verbose: 
+    #     print("going to zero X and Y in work cordinates. ")
+    # ser.write(str.encode("G0 X0 Y0 Z10" + "\n"))
+    # time.sleep(10)
+    # if verbose: 
+    #     print("going to approximate top right corner of plate in work cordinates.0")
+    # ser.write(str.encode("G0 X90 Y49 Z10" + "\n"))
 
     # check work cordinate mapping
     # verify_wPos(ser, mapping)
@@ -229,9 +234,50 @@ def write_gcode(ser, g_code_path, verbose=False):
 
             wait_for_movement_completion(ser, cleaned_line)
 
-        
+    end_time = time.perf_counter()
+    
+    print_time = abs(start_time - end_time) # seconds
+
+    
+    # update counters
+    config_path = "/home/pi/Documents/Engraving_codebase/script_config.json"
+    with open(config_path, "r") as f:
+        config_dict = json.load(f)
+        sesh_config = config(**config_dict)  # unpacking dictionary to config dataclass
+
+    print("Config pre mod: ", sesh_config)
+    if (spindle_travel is not None) and (spindle_stops is not None): 
+        time_avg_old = sesh_config.avg_vars[0]
+        travel_avg_old = sesh_config.avg_vars[1]
+        stop_avg_old = sesh_config.avg_vars[2]
+        n = sesh_config.avg_n
+
+        time_avg_new = time_avg_old*(n/(n+1)) + print_time/(n+1)
+        travel_avg_new = travel_avg_old*(n/(n+1)) + spindle_travel/(n+1)
+        stop_avg_new = stop_avg_old*(n/(n+1)) + spindle_stops/(n+1)
+
+        # summation terms
+        xi2 = sesh_config.sum_vars[0] + spindle_travel**2
+        xi = sesh_config.sum_vars[1] + spindle_travel 
+        xiui = sesh_config.sum_vars[2] + spindle_travel*spindle_stops
+        xiyi = sesh_config.sum_vars[3] + spindle_travel*print_time
+        ui = sesh_config.sum_vars[4] + spindle_stops
+        ui2 = sesh_config.sum_vars[5] + spindle_stops**2
+        uiyi = sesh_config.sum_vars[6] + spindle_stops*print_time
+
+        sesh_config.avg_n = n + 1
+
+        sesh_config.avg_vars = (time_avg_new, travel_avg_new, stop_avg_new) # tuple
+        sesh_config.sum_vars = (xi2, xi, xiui, xiyi, ui, ui2, uiyi)
+        print("CONFIG POST MOD: ", sesh_config) # FLAG
+        with open(config_path, "w") as f: 
+            # convert config dataclass to dictionary 
+            json.dump(asdict(sesh_config), f, indent=4)
+
+
+
     print("====End====")
-    return
+    return print_time
 
 
 def scan_grbl_port(baud=115200):
@@ -509,6 +555,187 @@ def jog(ser, mapping):
             
     return ser, new_map
 
+
+def jog_web(ser, speed, direction, spindle_on_bool):
+    '''
+    
+    modified jog function for web applications, takes in preconfigured speed and direction and sends serial message to move the spindle
+
+    '''
+    try: 
+        if direction =='up' or direction == 'down': 
+            cmd = f'G91 Y{speed}\n' if direction == 'up' else f'G91 Y{-speed}\n'
+            ser.write(str.encode(cmd))
+            wait_for_movement_completion(ser, cmd)
+        elif direction == 'left' or direction == 'right': 
+            cmd = f"G91 X{speed}\n" if direction == "right" else f"G91 X{-speed}\n"
+            ser.write(str.encode(cmd))
+            wait_for_movement_completion(ser, cmd)
+        elif direction == "high" or direction == "low": 
+            cmd = f"G91 Z{speed}\n" if direction == "high" else f"G91 Z{-speed}\n" 
+            ser.write(str.encode(cmd))
+            wait_for_movement_completion(ser, cmd)
+        elif direction == 'on': 
+            if spindle_on_bool: 
+                ser.write(b"M5\n")
+                spindle_on_bool = False
+            else: 
+                ser.write(b"M3 S12000\n")
+                spindle_on_bool = True
+    except: 
+        
+        print("Error in jog command!")
+            
+    return ser, spindle_on_bool
+
+def estimate_time(ser, gcode_path): 
+    '''
+    
+    estimate the time it would take to engrave in ms
+
+    distance travelled & number of stops/adjustments
+    
+    t = m * dist + k * stops + c
+
+    progressive regression using historical data 
+
+    '''
+    # harvest total path distance and number of stops/ adjustments
+    with open(gcode_path, "r") as f: 
+        lines = f.readlines()
+    
+    
+    ser.reset_output_buffer()
+    ser.reset_input_buffer()
+    ser.write(b"?")
+    string = ser.read_until(b">").decode()
+    print(string)
+    # Gcode is written in Work Positions only
+    WPos = string[int(string.index("W")+5):string.index(">")]
+    WPos = tuple(float(i) for i in WPos.split(","))
+    lines = lines[1:]
+    
+    spindle_stops = 0
+    spindle_travel = 0
+    curr_pos = WPos
+    feed_rate = 400
+    for line in lines: 
+        if line.startswith("G0"): 
+            spindle_stops = spindle_stops + 1
+
+        # find Feedrate
+        if line.find("F") != -1:
+            feed_rate = float(line[line.find("F")+1:line.find("F")+6])
+        # update new point
+        if line.find("X") != -1: 
+            xStr = line[line.find("X")+1:]
+
+            if xStr.find("F") != -1: 
+                if xStr[xStr.find("F") - 1] != " ":
+                    xStr = xStr.split("F")
+                else: 
+                    xStr = [xStr]
+            else: 
+                xStr = [xStr]
+            
+            try: 
+                x_new = float(xStr[0])
+            except ValueError: 
+                xStr = xStr[0].split(" ")
+                x_new = float(xStr[0])
+        else: 
+            x_new = curr_pos[0]
+
+        if line.find("Y") != -1: 
+            yStr = line[line.find("Y")+1:]
+
+            if yStr.find("F") != -1: 
+                if yStr[yStr.find("F") - 1] != " ":
+                    yStr = yStr.split("F")
+                else: 
+                    yStr = [yStr]
+            else: 
+                yStr = [yStr]
+            
+            try: 
+                y_new = float(yStr[0])
+            except ValueError: 
+                yStr = yStr[0].split(" ")
+                y_new = float(yStr[0])
+        else: 
+            y_new = curr_pos[1]
+
+        if line.find("Z") != -1: 
+            zStr = line[line.find("Z")+1:]
+
+            if zStr.find("F") != -1: 
+                if zStr[zStr.find("F") -1] != " ": 
+                    zStr = zStr.split("F")
+                else: 
+                    zStr = [zStr]
+            else: 
+                zStr = [zStr]
+
+            try: 
+                z_new = float(zStr[0])
+            except ValueError: 
+                zStr = zStr[0].split(" ")
+                z_new = float(zStr[0])
+        else: 
+            z_new = curr_pos[2]
+
+        dist = math.sqrt((x_new - curr_pos[0])**2 + (y_new - curr_pos[1])**2 + (z_new - curr_pos[2])**2)
+        spindle_travel = spindle_travel + dist/(feed_rate/60) # feed is mm/min
+
+        curr_pos = (x_new, y_new, z_new)
+
+
+    # calculate weights of regression based on previously trained data
+    # y: expected time 
+    # x: spindle travel 
+    # u: spindle stops
+    # y = c + m1*x + m2*u
+    # where c is the bias, m1 & m2 is the weights for both inputs
+    config_path = "/home/pi/Documents/Engraving_codebase/script_config.json"
+    with open(config_path, "r") as f:
+        config_dict = json.load(f)
+        sesh_config = config(**config_dict)  # unpacking dictionary to config dataclass
+    f.close()
+    # load in variables
+    y_bar = sesh_config.avg_vars[0]
+    x_bar = sesh_config.avg_vars[1]
+    u_bar = sesh_config.avg_vars[2]
+
+    xi2 = sesh_config.sum_vars[0]
+    xi = sesh_config.sum_vars[1]
+    xiui = sesh_config.sum_vars[2]
+    xiyi = sesh_config.sum_vars[3]
+    ui = sesh_config.sum_vars[4]
+    ui2 = sesh_config.sum_vars[5]
+    uiyi = sesh_config.sum_vars[6]
+
+
+
+    A = np.array([[xi2 - xi*x_bar, xiui - xi*u_bar], 
+                    [xiui - ui*x_bar, ui2 -ui*u_bar]])
+    
+    ef = np.array([[xiyi - xi*y_bar], [uiyi - ui*y_bar]])
+    try: # incase A is singular
+        m = np.linalg.inv(A) @ ef 
+    except: 
+        m = np.array([[0], [0]])
+    bias = y_bar - m[0]*x_bar - m[1]*u_bar     # y 
+    
+
+    # calculate estimated time
+    time_estimate = bias + m[0]*spindle_travel + m[1]*spindle_stops
+    
+    if sesh_config.avg_n < 5: 
+        # use temporary time_estimate because its inaccurate with small amount of samples
+        time_estimate = 10*60
+
+    return time_estimate, spindle_travel, spindle_stops
+
 def zero_xy(ser): 
     cmd = f"G92 X0 Y0\n"
     ser.write(str.encode(cmd))
@@ -563,21 +790,28 @@ def print_main_menu():
     print("'n' - exit")
     return
 
-def generate_preview(stateIdx, gcode_path, plate_num, mapping, originOffset=(0, 2)): 
+def generate_preview(stateIdx, gcode_path, plate_num, mapping): 
     # generate preview figure and store in folder first obtain the mPos start and ends of the plate location to better generate preview
     # ---- bed locations ---- (BL corner) all mPos not wPos
-    # NSW: (-205.6, -159.6) mm 
+    # NSW: (-205.6, -159.6) mm                
     # QLD: (-205.6, -159.6) mm 
     # VIC light: (-205, -159.3) mm
     # VIC heavy: (-205, -153) mm    
     # mapping = wPos - mPos
+    # ---- plate dimensions ---- (width x height) in mm
+    # NSW: 126 x 71
+    # QLD: 126 x 71
+    # VIC light: 110 x 59 
+    # Vic heavy: 125 x 70
 
+
+    
     # seems to need to add origin offset
     states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
-    pl = [[-205.6, -205.6, -205, -205], [-159.6, -159.6, -159.3, -153]]
-    imDim = [[126, 126, 110, 125], [71, 71, 59, 70]]
-    today = datetime.now().strftime("%Y%m%d").split("-")
-    datetimeString = f"{today[0][2:]}{today[1]}{today[2]}"
+    pl = [[-205.6, -205.6, -205, -207], [-157.6, -157.6, -153, -158.0]]
+    imDim = [[126, 126, 125, 110], [71, 71, 70, 59]]
+    today = datetime.now().strftime("%m%d%H%M%S")
+    datetimeString = today
 
     plateImg = plt.imread(f"plates_images/{states[stateIdx]}_ModPlate_Image.jpg")
     with open(gcode_path, 'r') as f: 
@@ -611,8 +845,9 @@ def generate_preview(stateIdx, gcode_path, plate_num, mapping, originOffset=(0, 
                 # convert x and y to imgPos from wPos
                 XmPos = x - mapping[0]
                 YmPos = y - mapping[1]
-                XimgLocal = XmPos - (pl[0][stateIdx] + originOffset[0]) # origin offset is added here to shift the preview according to the origin set by the user
-                YimgLocal = -(YmPos - (pl[1][stateIdx] + imDim[1][stateIdx] + originOffset[1])) # negative because img y is flipped compared to mpos y
+                # NOT NEEDING ORIGIN OFFSET? FLAG
+                XimgLocal = XmPos - (pl[0][stateIdx]) # origin offset is added here to shift the preview according to the origin set by the user
+                YimgLocal = -(YmPos - (pl[1][stateIdx] + imDim[1][stateIdx])) # negative because img y is flipped compared to mpos y
 
                 Xpx = round(XimgLocal * 5)
                 Ypx = round(YimgLocal * 5)
@@ -628,13 +863,13 @@ def generate_preview(stateIdx, gcode_path, plate_num, mapping, originOffset=(0, 
     # plt.axes().set_visible(False)
 
     for i in range(len(xChar)):
-        plt.plot(xChar[i], yChar[i], color='blue')
+        plt.plot(xChar[i], yChar[i], color='whitesmoke')
 
     # save file
     directory = f"static/preview/{states[stateIdx]}"
     if not os.path.exists(directory):
         os.makedirs(directory)
-    filename = f'platePreview_{datetimeString}{plate_num}.png'
+    filename = f'platePreview_{datetimeString}_{plate_num}.png' # FLAG datetime string too common if plate_num is fixed
     filepath = os.path.join(directory, filename)
     plt.savefig(filepath)
     plt.close()
@@ -643,19 +878,27 @@ def generate_preview(stateIdx, gcode_path, plate_num, mapping, originOffset=(0, 
     print("returning server file path")
     return serverpath
 
+def save_default_settings(state_idx, engData, engDataMore): 
+    '''
+    
+    FLAG: currently believed to be functional - review later
 
-def generate_gcode_web(state_idx, text_path, plate_num, engData, engDataMore, verbose=False): 
+    '''
     def safe_float(val): 
         try: 
-            float(val)
+            return float(val)
         except: 
             if val == "": 
                 val = None
+                return val
             else:
                 raise ValueError(f"Invalid float value: {val}")
+        
     states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
-    # modify the settings file with depth and z_safe requirements
-    path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/settings.txt"
+    # load default settings
+    path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/settings_default.txt"
+    print(engData["cutZ"])
+    print(float(engData["cutZ"]))
     zcut = safe_float(engData["cutZ"])
     zsafe = safe_float(engData["safeZ"])
     xorigin = safe_float(engData["originX"])
@@ -668,12 +911,153 @@ def generate_gcode_web(state_idx, text_path, plate_num, engData, engDataMore, ve
     origin_offset = (xorigin, yorigin)
     feedRate = safe_float(engDataMore["feedRate"])
     plungeRate = safe_float(engDataMore["plungeRate"])
-
+    textHeight = safe_float(engDataMore["textHeight"])
+    lineThickness = safe_float(engDataMore["lineThickness"])
+    textWidth = safe_float(engDataMore["textWidth"])
+    charSpacing = safe_float(engDataMore["charSpacing"])
+    wordSpacing = safe_float(engDataMore["wordSpacing"])
+    lineSpacing = safe_float(engDataMore["lineSpacing"])
+    textAngle = safe_float(engDataMore["textAngle"])
 
 
     # edit settings lines according to provided data
     with open(path, "r") as f:
         lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        # modify the cutting depth
+        if "ZCUT" in line and zcut is not None:
+            # parse with split instead of fixed indices
+            parts = line.split()
+            # parts: ['(fengrave_set', 'ZCUT', '2', ')']  or similar
+            # change the value part (usually index 2)
+            # old_depth = parts[2]
+            parts[2] = f"{zcut:.3f}"
+            # rebuild the line, preserving simple spacing and closing paren
+            lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} )\n"
+            print(lines[i])
+
+        # modify the safe z height   
+        elif "ZSAFE" in line and zsafe is not None:
+            parts = line.split()
+            parts[2] = f"{zsafe:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}      {parts[2]} )\n"
+        
+        # modify the x_origin
+        elif "xorigin" in line and origin_offset[0] is not None:
+            parts = line.split()
+            parts[2] = f"{origin_offset[0]:.3f}"
+            lines[i] = f"{parts[0]} {parts[1]}    {parts[2]} )\n"
+        
+        # modify the y_origin
+        elif "yorigin" in line and origin_offset[1] is not None:
+            parts = line.split()
+            parts[2] = f"{origin_offset[1]:.3f}"
+            lines[i] = f"{parts[0]} {parts[1]}    {parts[2]} )\n"
+        
+        # modify the finish position 
+        elif "gpost" in line and gpost[0] is not None: 
+            parts = line.split()
+            post_loc = f"X{gpost[0]:.3f} Y{gpost[1]:.3f} Z{gpost[2]:.3f}"
+            lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} {post_loc} {parts[6]} {parts[7]}  )\n"
+
+        # add the changes to feed and plunge rate
+        elif 'FEED' in line and feedRate is not None: 
+            parts = line.split()
+            parts[2] = f"{feedRate:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}       {parts[2]} )\n"
+
+        elif 'PLUNGE' in line and plungeRate is not None:
+            parts = line.split()
+            parts[2] = f"{plungeRate:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+        elif 'YSCALE' in line and textHeight is not None: 
+            parts = line.split()
+            parts[2] = f"{textHeight:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+
+        elif 'STHICK' in line and lineThickness is not None: 
+            parts = line.split()
+            parts[2] = f"{lineThickness:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+
+        elif "XSCALE" in line and textWidth is not None: 
+            parts = line.split()
+            parts[2] = f"{textWidth:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+
+        elif "CSPACE" in line and charSpacing is not None: 
+            parts = line.split()
+            parts[2] = f"{charSpacing:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+
+        elif "WSPACE" in line and wordSpacing is not None: 
+            parts = line.split()
+            parts[2] = f"{wordSpacing:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+
+        elif "LSPACE" in line and lineSpacing is not None: 
+            parts = line.split()
+            parts[2] = f"{lineSpacing:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+
+        elif "TANGLE" in line and textAngle is not None: 
+            parts = line.split()
+            parts[2] = f"{textAngle:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+
+    with open(path, "w") as f:
+        f.writelines(lines)
+
+
+def generate_gcode_web(state_idx, text_path, plate_num, engData, engDataMore, verbose=True): 
+    def safe_float(val): 
+        try: 
+            val = float(val)
+        except: 
+            if val == "": 
+                val = None
+            else:
+                raise ValueError(f"Invalid float value: {val}")
+        return val
+    states = ["NSW", "QLD", "VIC_Heavy", "VIC_Light"]
+    # modify the settings file with depth and z_safe requirements
+    path = f"/home/pi/Documents/F-Engrave-1.76_src/configuration/{states[state_idx]}/settings.txt"
+
+    zcut = safe_float(engData["cutZ"])
+    zsafe = safe_float(engData["safeZ"])
+    xorigin = safe_float(engData["originX"])
+    yorigin = safe_float(engData["originY"])
+    gpostx = safe_float(engData['finalX'])
+    gposty = safe_float(engData["finalY"])
+    gpostz = safe_float(engData["finalZ"])
+    
+    gpost = (gpostx, gposty, gpostz)
+    origin_offset = (xorigin, yorigin)
+    feedRate = safe_float(engDataMore["feedRate"])
+    plungeRate = safe_float(engDataMore["plungeRate"])
+    textHeight = safe_float(engDataMore["textHeight"])
+    lineThickness = safe_float(engDataMore["lineThickness"])
+    textWidth = safe_float(engDataMore["textWidth"])
+    charSpacing = safe_float(engDataMore["charSpacing"])
+    wordSpacing = safe_float(engDataMore["wordSpacing"])
+    lineSpacing = safe_float(engDataMore["lineSpacing"])
+    textAngle = safe_float(engDataMore["textAngle"])
+    # FLAG
+    # post script Gcode and pre-script gcode currently not in use as they are encoded with Gcode origin and final work position
+
+
+    # edit settings lines according to provided data
+    with open(path, "r") as f:
+        lines = f.readlines()
+
 
 
 
@@ -753,7 +1137,69 @@ def generate_gcode_web(state_idx, text_path, plate_num, engData, engDataMore, ve
             lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
             if verbose: 
                 print("NEW:", lines[i].strip())
+        
+        elif 'YSCALE' in line and textHeight is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{textHeight:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
 
+        elif 'STHICK' in line and lineThickness is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{lineThickness:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        elif "XSCALE" in line and textWidth is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{textWidth:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        elif "CSPACE" in line and charSpacing is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{charSpacing:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        elif "WSPACE" in line and wordSpacing is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{wordSpacing:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        elif "LSPACE" in line and lineSpacing is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{lineSpacing:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
+
+        elif "TANGLE" in line and textAngle is not None: 
+            if verbose: 
+                print("OLD: ", line.strip())
+            parts = line.split()
+            parts[2] = f"{textAngle:.2f}"
+            lines[i] = f"{parts[0]} {parts[1]}     {parts[2]} )\n"
+            if verbose: 
+                print("NEW:", lines[i].strip())
 
             
 
@@ -965,29 +1411,29 @@ def generate_engraving_text_web(state_idx, plate_num, json, verbose=False):
 
     # QLD plates (comma format)
     elif state_idx == 1: 
-        # convert the GVM and GCM values to comma format for the calibration to work 
-        if str(values[-4]).find(",") == -1: 
+        # convert the GVM and GCM values to comma format for the calibration to work  BUG: input count is last number
+        if str(values[-5]).find(",") == -1: 
             try: 
                 modGVM = int(values[-4])
                 values[-4] = f"{modGVM:,}"
             except: 
                 pass
         
-        if str(values[-3]).find(",") == -1:
+        if str(values[-4]).find(",") == -1:
             try: 
                 modGCM = int(values[-3])
                 values[-3] = f"{modGCM:,}" 
             except: 
                 pass
 
-        if str(values[-1]).find(",") == -1:
+        if str(values[-2]).find(",") == -1:
             try: 
                 modATM = int(values[-1])
                 values[-1] = f"{modATM:,}"
             except: 
                 pass
         
-        if str(values[-2]).find(",") == -1:
+        if str(values[-3]).find(",") == -1:
             try: 
                 modGTM = int(values[-2])
                 values[-2] = f"{modGTM:,}"
@@ -1479,25 +1925,30 @@ def get_plate_num(state, textData):
     if textData["plateSerialNumber"] != "":
         return str(textData["plateSerialNumber"])
     else: 
-        config_path = "/home/pi/Documents/Engraving_codebase/script_config.json"
-        with open(config_path, "r") as f:
-            config_dict = json.load(f)
-            sesh_config = config(**config_dict)  # unpacking dictionary to config dataclass
+        if state == "VIC_Heavy" and textData["SerNo"] != "": 
+            return str(textData["SerNo"]) # use inbuilt ser number when allowed
+        elif state == "VIC_Light" and textData["SerNo"] != "": 
+            return str(textData["SerNo"])
+        else: 
+            config_path = "/home/pi/Documents/Engraving_codebase/script_config.json"
+            with open(config_path, "r") as f:
+                config_dict = json.load(f)
+                sesh_config = config(**config_dict)  # unpacking dictionary to config dataclass
 
-            idx = states.index(state)
+                idx = states.index(state)
 
-            if idx != -1:
-                plate_num = sesh_config.plate_counters[idx] + 1
-                sesh_config.plate_counters[idx] = plate_num
+                if idx != -1:
+                    plate_num = sesh_config.plate_counter[idx] + 1
+                    sesh_config.plate_counter[idx] = plate_num
 
-                with open(config_path, "w") as f: 
-                    # convert config dataclass to dictionary 
-                    json.dump(asdict(sesh_config), f, indent=4)
+                    with open(config_path, "w") as f: 
+                        # convert config dataclass to dictionary 
+                        json.dump(asdict(sesh_config), f, indent=4)
 
-                return str(plate_num)
-            else:
-                print("State not found, cannot generate plate number.")
-                return "000000"
+                    return str(plate_num)
+                else:
+                    print("State not found, cannot generate plate number.")
+                    return "000000"
 
 def main(verbose=False):
     # code status: all seperate code tested and working universal mapping synchronisation between calibration not yet verified - need to test pyplot function

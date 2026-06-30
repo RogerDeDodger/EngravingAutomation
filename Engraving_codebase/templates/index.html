@@ -2,8 +2,9 @@
 <html lang="en-AU">
 <head>
 <meta charset="utf-8">
-<title>Compliance Plate Engraving Controller</title> <!--browser title to show when visiting -->
 
+<title>Compliance Plate Engraving Controller</title> <!--browser title to show when visiting -->
+<script src="https://kit.fontawesome.com/449bafebfb.js" crossorigin="anonymous"></script>
 <style>
 
 /* ===== GENERAL =====  body means it applies to the entire body object */
@@ -18,12 +19,27 @@ body {
 .tab-bar {
     display: flex;
     background-color: #2c2c2c;
+    flex: 1;
 }
 
 .tab {
     padding: 15px 25px;
     cursor: pointer;
     font-size: 18px;
+}
+
+.tab-mstatus {
+    font-size: 20px;
+    font-weight: bold;
+    padding: 10px;
+    right: 0;
+    position: absolute;
+    display: inline-block;
+    background-color: red;
+}
+
+.tab-onbutton {
+
 }
 
 .tab:hover {
@@ -57,6 +73,27 @@ body {
     flex: 1; /* percentage width of each panel */
 }
 
+.panel-container .panel-stack {
+    flex: 0.35
+}
+
+.panel-stack {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.panel-stack .jogPanel {
+    flex: 1
+}
+
+
+.panel-stack .pos-panel {
+    flex: 0.22;
+
+
+}
+
 /* ===== PANELS ===== */
 .panel {
     background-color: #2c2c2c;
@@ -74,12 +111,40 @@ body {
     line-height: 1.75;
 }
 
+.jogPanel {
+    background-color: #2f4f4f;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    line-height: 1.75;
+}
+
+.pos-panel {
+    background-color: #2f4f4f;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    line-height: 1.75;
+    text-align: center;
+
+}
+
 .input-pair {
     display: inline-flex;
-    gap: 5px; /* Space between boxes */
+    gap: 10px; /* Space between boxes */
 }
 .input-pair input {
-    width: 60px; /* Adjust width as needed */
+    width: 70px; /* Adjust width as needed */
+    box-sizing: boarder-box;
+    margin: 0px;
+    padding: 0px;
+
+}
+
+.input-pair input:read-only {
+  background-color: #f0f0f0;
+  color: #666;
+  cursor: not-allowed;
 }
 
 /* ===== BUTTONS ===== */
@@ -87,7 +152,7 @@ body {
     padding: 20px;
     font-size: 20px;
     margin: 10px;
-    border: none;
+    border: 2px #1e1e1e;
     border-radius: 10px;
     cursor: pointer;
     transition: background-color 0.1s
@@ -99,6 +164,12 @@ body {
     cursor: wait;
 }
 
+.cordinates-input {
+    width: 100px;
+    padding: none;
+    margin: 0;
+}
+
 .small-button {
     padding: 8px;
     font-size: 12px;
@@ -107,6 +178,22 @@ body {
     border-radius: 5px;
     cursor: pointer;
     transition: background-color 0.1s;
+}
+
+.medium-button {
+    padding: 12px 18px;
+    font-size: 14px;
+    margin: 5px;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.medium-button:active {
+    background-color: #dc3545;
+    color: white;
+    cursor: wait;
 }
 
 .small-button:active {
@@ -130,9 +217,156 @@ body {
     color: white;
 }
 
+.movement-button {
+    background-color: #71797E;
+    padding: 16px;
+    font-size: 20px;
+    border-radius: 8px;
+    margin: 10px;
+    border: 4px solid #555555;
+    cursor: pointer;
+    text-align: center;
+    transition: background-color 0.1s;
+
+}
+
+.movement-button:active {
+    background-color: #2a2c2e;
+    color: white;
+    cursor: wait;
+}
+
+
+
+.alignment-button {
+    background-color: #71797E;
+    padding: 16px 24px;
+    font-size: 20px;
+    border-radius: 8px;
+    margin: 14px;
+    border: 4px solid #555555;
+    cursor: pointer;
+    text-align: center;
+    visibility: hidden;
+}
+
+.alignment-button-2 {
+    background-color: #71797E;
+    padding: 10px 10px;
+    font-size: 20px;
+    border-radius: 8px;
+    margin: 14px;
+    border: 4px solid #555555;
+    cursor: pointer;
+    text-align: center;
+    visibility: hidden;
+}
+
+
 .big-button:hover {
     opacity: 0.8;
 }
+
+
+
+/* Container for the toggle */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+    text-align: right
+}
+
+/* Hide default checkbox */
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* The track */
+.sliderSwitch {
+    position: absolute;
+    cursor: pointer;
+    background-color: #ccc;
+    border-radius: 24px;
+    width: 100%;
+    height: 100%;
+    transition: background-color 0.3s;
+}
+
+/* The circular slider */
+.sliderSwitch::before {
+    content: "";
+    position: absolute;
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 2px;
+    background-color: white;
+    border-radius: 50%;
+    transition: transform 0.3s;
+}
+
+/* Toggled state */
+.toggle-switch input:checked+.sliderSwitch {
+    background-color: #4caf50;
+}
+
+.toggle-switch input:checked+.sliderSwitch::before {
+    transform: translateX(26px);
+}
+
+.slidecontainer {
+  width: 80%; /* Width of the outside container */
+}
+
+/* The slider itself */
+.slider {
+  -webkit-appearance: none;
+  width: 80%;
+  height: 15px;
+  border-radius: 5px;  
+  background: #d3d3d3;
+  outline: none;
+  opacity: 1;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  border-radius: 20%; 
+  background: #04AA6D;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #04AA6D;
+  cursor: pointer;
+}
+
+input[type="range"] {
+  width: 80%;
+  /* Ensures slider snaps to steps defined in HTML */
+}
+
+datalist {
+  display: flex;
+  justify-content: space-between;
+  writing-mode: horizontal-tb;
+  width: 80%;
+  margin-top: 5px;
+}
+ 
+/* ===== Status Box ===== */
 
 </style>
 
@@ -146,13 +380,129 @@ body {
     <div class="tab active" onclick="openTab('Prepare')">Prepare</div>
     <div class="tab" onclick="openTab('Engrave')">Engrave</div>
     <div class="tab" onclick="openTab('Calibrate')">Calibrate</div>
+    <div id="mstatus_box" class="tab-mstatus" onclick="pollStatus()">Machine Starting..
+
+    </div>
 </div>
+
 
 <!-- ===== PREPARE TAB ===== -->
 <div id="Prepare" class="tab-content active">
-    <div class="panel">
-        <h2>Machine Control</h2>
-        <button class="big-button green">Unlock</button>
+    <div class="panel-container">
+        <div class="panel">
+            <h2>Machine Control</h2>
+            <button class="big-button green" onclick="unlockMachine()">Unlock</button>
+            <button class="big-button red" onclick="eStop()">Emergency Stop</button>
+        </div>
+
+        <div class="panel-stack" id="prepareRstack">
+            <div class="pos-panel" id="PosPanels">
+                <label >Machine Position</label><br>
+                <div class="input-pair" id="mPosPairs">
+                    <label>X</label><input type="text" class="cordinates-input" id="mPosX" readonly>
+                    <label for="mPosY">Y </label><input type="text" class="cordinates-input" id="mPosY" readonly>
+                    <label for="mPosZ">Z </label><input type="text" class="cordinates-input" id="mPosZ" readonly>
+                </div>
+                <br>
+                <label>Working Position</label><br>
+                <div class="input-pair" id="wPosPairs">
+                    <label for="wPosX">X </label><input type="text" class="cordinates-input" id="wPosX" readonly>
+                    <label for="wPosY">Y </label><input type="text" class="cordinates-input" id="wPosY" readonly>
+                    <label for="wPosZ">Z </label><input type="text" class="cordinates-input" id="wPosZ" readonly>
+                </div>
+            </div>
+
+            <div class="jogPanel" id="jogDash">
+                <h3>Jog Spindle</h3>        
+                <div class="input-pair" id="jogPosPairs">
+                    <select id="jogType" onchange="convertPositions(this.value)">
+                        <option value="Work">Work</option>
+                        <option value="Machine">Machine</option>
+                    </select>
+                    <label>X</label><input type="number" id="jogPosX">
+                    <label>Y</label><input type="number" id="jogPosY">
+                    <label>Z</label><input type="number" id="jogPosZ">
+                    <button style="display: block; margin: 0 auto;" onclick="movePosition()">Move</button>
+                <!-- cordinates to move to for specific movements, movement speed, buttons for zeroing-->
+                </div>
+
+                <br><br>
+                <div class="slidercontainer">
+
+                    <div style="display: flex; align-items: center;">
+                        <label>Jog Speed</label>
+                        <div style="margin-left: auto; display:flex; align-items: center; gap:6px;">
+                            <input type="text" class="cordinates-input" id="jogSpeed" value="1"><span>mm</span>
+                        </div>
+
+                    </div>
+                    
+                    <input type="range" min="0" max="100" value="54" step="0.5" class="slider" id="log-slider" list="speedLists"> <!-- 54.069 val for 1mm-->
+                    
+                    <datalist id="speedLists">
+                        <option value="0.01" label="0.01"></option>
+                        <option value="0.05" label="0.05"></option>
+                        <option value="0.2" label="0.2"></option>
+                        <option value="0.9" label="0.9"></option>
+                        <option value="3.5" label="3.5"></option>
+                        <option valui="12.8" label="12.8"></option>
+                        <option valui="50" label="50"></option>
+                    </datalist>
+                </div>
+                <!--test the slider out-->
+                <div class="wasdqe-container">
+                    <div style="display: flex; align-items: center;">
+                        <button class="alignment-button"></button>
+                        <button class="movement-button" onclick="jogStep(value)" value="up"><i class="fa-solid fa-caret-up"></i></button>
+                        <div style="margin-left: auto; display:flex; align-items: center; gap:6px;">
+                            <button class="movement-button" onclick="jogStep(value)" value="high"><i class="fa-solid fa-angles-up"></i></button>
+                        </div>
+
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                    <button class="movement-button" onclick="jogStep(value)" value="left"><i class="fa-solid fa-caret-left"></i></button>
+                    <button class="movement-button" onclick="jogStep(value)" value="on"><i class="fa-regular fa-circle-dot"></i></button>
+                    <button class="movement-button" onclick="jogStep(value)" value="right"><i class="fa-solid fa-caret-right"></i></button>
+
+                    </div>
+
+                    <div style="display: flex; align-items: center;">
+                        <button class="alignment-button"></button>
+                        <button class="movement-button" onclick="jogStep(value)" value="down"><i class="fa-solid fa-caret-down"></i></button>
+                        <div style="margin-left: auto; display:flex; align-items: center; gap:6px;">
+                            <button class="movement-button" onclick="jogStep(value)" value="low"><i class="fa-solid fa-angles-down"></i></button>
+                        </div>
+
+                    </div>
+                
+                    
+                </div>
+
+                <br>Enable keyboard Spindle Control
+                <label class="toggle-switch">
+                    <input type="checkbox" onchange="enableKeyboardJogControl(this.value)"/>
+                    <span class="sliderSwitch"></span>
+                </label><br>
+                <div id="manual-jog-settings" style="display:none"> <!--FLAG debug-->
+                <ul>
+                    <li>use wasd-qe for x, y, z movements</li>
+                    <li>use p to toggle movement speed</li>
+                    <li>use o to toggle spindle on/off</li>
+                </ul>
+                </div>
+                
+
+                <button class="medium-button blue" onclick="zeroXYWorking()">Zero XY</button>
+                <button class="medium-button blue" onclick="zeroZWorking()">Zero Z</button>
+                <button class="medium-button blue" onclick="saveMapping()">Save as default work origin</button>
+
+
+            </div>
+
+
+
+        </div>
+
         
 
         <!-- contain jog and zeroing functions-->
@@ -164,16 +514,20 @@ body {
     <div class="panel-container">
         <!-- Plate Information Panel-->
         <div class="panel" id="panel1">
-            <h2>Plate Information</h2>
-            <label for="states">Plate's State of Jurisdiction:</label>
-            <select name="state" id="state" onchange="handleSelection(this.value)">
-                <option value="QLD">Queensland</option>
-                <option value="NSW">New South Whales</option>
-                <Option value="VIC_HEAVY">Heavy Vehicle Mod Plates</Option>
-                <option value="VIC_LIGHT">Light Vehicle Mod Plates</option>
-            </select>
-            <div class="panel" id="engravingDetails"></div>
-
+            <div id=textInfoContainer style="display: block">
+                <h2>Plate Information</h2>
+                <label for="states">Plate's State of Jurisdiction:</label>
+                <select name="state" id="state" onchange="handleSelection(this.value)">
+                    <option value="QLD">Queensland</option>
+                    <option value="NSW">New South Whales</option>
+                    <Option value="VIC_Heavy">Heavy Vehicle Mod Plates</Option>
+                    <option value="VIC_Light">Light Vehicle Mod Plates</option>
+                </select>
+                <div class="panel" id="engravingDetails">
+                </div>
+            </div>
+            <div id=imageContainer style="display: none">
+            </div>
             
 
         </div>
@@ -252,8 +606,9 @@ body {
 
 
 
-                    <br>
-                </div>
+
+                </div><br>
+                <button class="big-button blue" onclick=saveSettingsDefault()>Save Settings as Default</button>
 
                 
             </div>
@@ -266,7 +621,13 @@ body {
 
     <div class="panel-container">
         <div class="panel">
-            <button class="big-button green" onclick=saveInput()>Generate Preview</button>
+            <button class="big-button green" onclick=saveInput() style="display: block" id="generatePreview">Generate Preview</button>
+            <button class="big-button blue" onclick=showPlateInfo() style="display: none" id="showInput">Show input</button>
+            <button class="movement-button" onclick=startEngraving()><i class="fa-solid fa-print"></i>Engrave Plate</button>
+            <div id="engravingProgressBar" style="display: none">
+                <label>Engraving Progress: </label>
+                <progress id="progressBar" value="0" max="100"></progress>
+            </div>
         </div>
     </div> 
 
@@ -281,11 +642,14 @@ body {
 </div>
 
 <script>
+    var keyboardControlBool = false
     // create a anon function to define
     window.onload = async function() { 
         // fill fields with default values assume default state is QLD
-        const response = await fetch("/load_initial_settings", {
-            method: "GET"
+        const response = await fetch("/reload_engraver_settings", {
+            method: "POST", 
+            headers: {"content-Type": "text/plain"},
+            body: "QLD"
         })
         const data = await response.json() // extract the json from the response and can be used as data.key
         console.log(data)
@@ -312,10 +676,44 @@ function dispMoreEngDetails() {
     }
 }
 
+// flag
+async function saveSettingsDefault() {
+    console.log("saving engraving settings to default settings file, overriding default settings file. ")
+    const stateSelection = document.getElementById("state").value;
 
+    const engContainer = document.getElementById("engravingSettings");
+    const moreEngContainer = document.getElementById("moreEngravingSettings");
+
+    const inputsEng = engContainer.querySelectorAll("input");
+    const inputsEngMore = moreEngContainer.querySelectorAll("input");
+
+    const NinpEng = inputsEng.length;
+    const NinpEngMore = inputsEngMore.length;
+
+    const inputDatEng = {};
+    const inputDatEngMore = {};
+
+    inputsEng.forEach(input => {
+        inputDatEng[input.id] = input.value;
+    })
+
+    inputsEngMore.forEach(input => {
+        inputDatEngMore[input.id] = input.value;
+    })
+
+    inputDatEng.inputCount = NinpEng;
+    inputDatEngMore.inputCount = NinpEngMore;
+
+    const response = await fetch('/saveDefaultSettings', {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({state: stateSelection,
+                            engravingSettings: inputDatEng,
+                            engravingSettingsMore: inputDatEngMore})
+    })
+}
 
 async function saveInput() {
-    console.log("BUTTON CLICKED") // make sure to save the engraver settings as well
     const stateSelection = document.getElementById("state").value;
     const textContainer = document.getElementById("engravingDetails");
     const engContainer = document.getElementById("engravingSettings");
@@ -329,7 +727,6 @@ async function saveInput() {
     const NinpEng = inputsEng.length;
     const NinpEngMore = inputsEngMore.length;
     
-    console.log(`found ${Ninp} inputs`);
 
     // build some sort of data object by going through each input
     const inputDat = {};
@@ -360,26 +757,151 @@ async function saveInput() {
         body: JSON.stringify({textInput: inputDat,
                             state: stateSelection,
                             engravingSettings: inputDatEng,
-                            engravingSettingsMore: inputDatEngMore})
+                            engravingSettingsMore: inputDatEngMore, 
+                            print: "no"})
     })
     if (!response.ok) throw new Error("Network error");
     const dataString = await response.text() // I think i also need an await for the response.text 
     console.log(dataString)
-    document.getElementById("panel1").innerHTML = ""
-    const jsonResponse = response.json()
-    const container = document.getElementById('panel1')
+    document.getElementById("textInfoContainer").style.display = "none" // clears panel1 contents FLAG make it turn all elements to invisible instead 
+    // FLAG make the button disappear and replace with see settings
+    // print plate button
+    document.getElementById('imageContainer').innerHTML = ""
+    const container = document.getElementById('imageContainer')
     const img = document.createElement('img')
     img.src = dataString
     container.appendChild(img)
+    container.style.display = "block"
+    const returnbutton = document.getElementById("showInput")
+    const previewButton = document.getElementById("generatePreview")
 
+    returnbutton.style.display = "block"
+    previewButton.style.display = "none"
+}
+
+let progressID;
+async function startEngraving() {
+    // send current settings and then engrave
+    const stateSelection = document.getElementById("state").value;
+    const textContainer = document.getElementById("engravingDetails");
+    const engContainer = document.getElementById("engravingSettings");
+    const moreEngContainer = document.getElementById("moreEngravingSettings");
+
+    const inputs = textContainer.querySelectorAll("input");
+    const inputsEng = engContainer.querySelectorAll("input");
+    const inputsEngMore = moreEngContainer.querySelectorAll("input");
+
+    const Ninp = inputs.length;
+    const NinpEng = inputsEng.length;
+    const NinpEngMore = inputsEngMore.length;
+    
+
+    // build some sort of data object by going through each input
+    const inputDat = {};
+    const inputDatEng = {};
+    const inputDatEngMore = {};
+
+    inputs.forEach(input => {
+        inputDat[input.id] = input.value;
+    })
+
+    inputsEng.forEach(input => {
+        inputDatEng[input.id] = input.value;
+    })
+
+    inputsEngMore.forEach(input => {
+        inputDatEngMore[input.id] = input.value;
+    })
+
+
+    inputDat.inputCount = Ninp;
+    inputDatEng.inputCount = NinpEng;
+    inputDatEngMore.inputCount = NinpEngMore;
+
+
+    const response = await fetch('/send_settings', {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({textInput: inputDat,
+                            state: stateSelection,
+                            engravingSettings: inputDatEng,
+                            engravingSettingsMore: inputDatEngMore, 
+                            print: "yes"})
+    })
+    if (!response.ok) throw new Error("Network error");
+    const data = await response.json() // load in a progress bar from estimated time
+
+    // FLAG REMOVE LATER
+    console.log(data)
+    document.getElementById("mstatus_box").style.backgroundColor = "#6495ED"
+    document.getElementById("mstatus_box").textContent = "Running"
+
+    const progresscontainer = document.getElementById("engravingProgressBar")
+    progresscontainer.style.display = "block"
+
+    // create progress bar and a web progress update ticker
+    progressID = setInterval(updateProgressBar, data["timeEst"]*1000/100)
+    
+
+    // send the gcode
+    const response2 = await fetch('/start_engraving', {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({gcode: data["gcodePath"], 
+                                x: data["spindle_travel"], 
+                                u: data["spindle_stops"]
+        })
+    })
+
+}
+
+function updateProgressBar() { 
+    const progressbar = document.getElementById("progressBar")
+    if (progressbar.value == 100) {
+        clearInterval(progressID)
+        const progresscontainer = document.getElementById("engravingProgressBar")
+        progresscontainer.style.display = "none"
+        document.getElementById("mstatus_box").style.backgroundColor = "#4F7942"
+        document.getElementById("mstatus_box").textContent = "Idle"
+        progressbar.value = 0
+    } else {
+        progressbar.value = progressbar.value + 1
+    }
+}
+
+function showPlateInfo() {
+    const inputButton = document.getElementById("showInput")
+    const previewButton = document.getElementById("generatePreview")
+
+    inputButton.style.display = "none"
+    previewButton.style.display = "block"
+
+    const textInfo = document.getElementById("textInfoContainer")
+    const imgContainer = document.getElementById("imageContainer")
+
+    textInfo.style.display = "block"
+    imgContainer.style.display = "none"
+    
 
 
 }
 
+function unlockMachine() {
+    fetch('/unlock', {
+        method: "GET"
+    })
+    .then(response => response.json())
 
-function startEngraving() {
-    ;
 }
+
+function eStop() {
+    fetch('/estop', {
+        method: "GET"
+    })
+    .then(response => response.json())
+}
+
+
 
 function loadDefaultSettings() {
     fetch('/get_settings', {
@@ -393,11 +915,12 @@ function loadDefaultSettings() {
 }
 
 async function handleSelection(value) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Australia/Sydney' }).format(new Date());
 
     // Queensland textbox
     if (value=="QLD") {
         const fields = [
+            {value: "", type: "text", id: "plateSerialNumber", placeholder: "leave blank to autogenerate.", label: "Plate's Serial Number(for internal tracking) "},
             {value: 'MA3790', type: 'text', id: 'accNo', placeholder: 'e.g. MA3790',            label: 'Accreditation No:     '},
             {value: today, type: 'date', id: 'date', placeholder: '',                           label: 'Date:                 '},
             {value: '', type: 'number', id: 'certNo', placeholder: 'e.g. 1132370',              label: 'Cert. No:             '},
@@ -434,20 +957,20 @@ async function handleSelection(value) {
     })
     } else if (value=="NSW") {
         const fields = [
+            {value: "", type: "text", id: "plateSerialNumber", placeholder: "leave blank to autogenerate.", label: "Plate's Serial Number(for internal tracking) "},    
             {value: '130009', type:'number', id:'accNo', placeholder:'e.g. 130009', label:'Licence Number: '},
             {value: today, type:'date', id:'date', placeholder:'', label:'Date: '},
             {value: '', type:'text', id:'certNo', placeholder:'e.g. 1300092600012MP', label:'Certification Number: '},
-            {value: '', type:'text', id:'VIN', placeholder:'', label:'VIN: '},
-            {value: '', type:'text', id:'engNo', placeholder:'', label:'Engine Number: '},
-            {value: '', type:'number', id:'frontTyre', placeholder:'', label:'Seating Capacity: '},
-            {value: '', type:'text', id:'', placeholder:'', label:'Tyre Size: '},
-            {value: '', type:'text', id:'frontTyre', placeholder:'', label:'Front  '},
-            {value: '', type:'text', id:'rearTyre', placeholder:'', label:'Rear '},
-            {value: '', type:'number', id:'GVM', placeholder:'', label:'Modification GVM: '},
-            {value: '', type:'number', id:'GCM', placeholder:'', label:'Modification GCM: '},
-            {value: '----', type:'text', id:'GTM', placeholder:'', label:'Modification GTM: '},
-            {value: '----', type:'text', id:'ATM', placeholder:'', label:'Modification ATM: '},
-            {value: '', type:'test', id:'modCodes', placeholder:'Separate with full stops', label:'Modification Codes: '},
+            {value: '', type:'text', id:'VIN', placeholder:'e.g. JHDGH8JT1XXX10285', label:'VIN: '},
+            {value: '', type:'text', id:'engNo', placeholder:'e.g. J08EWA19409', label:'Engine Number: '},
+            {value: '', type:'number', id:'seatCap', placeholder:'e.g. 3', label:'Seating Capacity: '},
+            {value: '', type:'text', id:'frontTyre', placeholder:'e.g. 295/80R22.5', label:'Tyre Size: Front '},
+            {value: '', type:'text', id:'rearTyre', placeholder:'e.g. 11R22.5', label:'Rear '},
+            {value: '', type:'number', id:'GVM', placeholder:'e.g. 18000', label:'Modification GVM: '},
+            {value: '', type:'number', id:'GCM', placeholder:'e.g. 25000', label:'Modification GCM: '},
+            {value: '----', type:'text', id:'GTM', placeholder:'e.g. ----', label:'Modification GTM: '},
+            {value: '----', type:'text', id:'ATM', placeholder:'e.g. ----', label:'Modification ATM: '},
+            {value: '', type:'test', id:'modCodes', placeholder:'Separate with full stops', label:'Modification Codes: '}, // FLAG make sure this autoconverts spaces and commas
         ]
         const container = document.getElementById("engravingDetails");
     container.innerHTML = ""; // clear the container
@@ -470,20 +993,21 @@ async function handleSelection(value) {
         const br = document.createElement("br");
         container.appendChild(br);
     })
-    } else if (value=="VIC_HEAVY") { 
+    } else if (value=="VIC_Heavy") { 
         const fields = [
-            {value: "", type: "text", id: "certNo", placeholder: "", label:"VASS Certificate No: "}, 
+            {value: "", type: "text", id: "plateSerialNumber", placeholder: "leave blank to autogenerate.", label: "Plate's Serial Number(for internal tracking) "},
+            {value: "", type: "text", id: "certNo", placeholder: "e.g. V0079052", label:"VASS Certificate No: "}, 
             {value: today, type: "date", id: "date", placeholder: "", label:"Date: "}, 
-            {value: "", type: "text", id: "modCode", placeholder: "", label:"Mod Codes: "}, 
-            {value: "", type: "text", id: "VIN", placeholder: "", label:"VIN Chassis No: "}, 
-            {value: "", type: "text", id: "tyreSizes", placeholder: "", label:"Tyre Sizes: "}, 
-            {value: "", type: "number", id: "noAxle", placeholder: "", label:"Mod No Axles: "}, 
-            {value: "", type: "text", id: "adrCAT", placeholder: "", label:"ADR Category: "}, 
-            {value: "", type: "text", id: "seatCap", placeholder: "", label:"Seating Cap: "}, 
-            {value: "", type: "text", id: "bodStyle", placeholder: "", label:"Body Style: "}, 
-            {value: "", type: "number", id: "GVM", placeholder: "", label:"GVM/ATM: "}, 
-            {value: "", type: "number", id: "GCM", placeholder: "", label:"GCM/GTM: "}, 
-            {value: "", type: "number", id: "SerNo", placeholder: "", label:"Serial No: "}, 
+            {value: "", type: "text", id: "modCode", placeholder: "e.g. S11 - ROAD TRAIN TRAILER", label:"Mod Codes: "}, 
+            {value: "", type: "text", id: "VIN", placeholder: "e.g. 6B9FTE3BBCMAA5256", label:"VIN Chassis No: "}, 
+            {value: "", type: "text", id: "tyreSizes", placeholder: "Please type full string", label:"Tyre Sizes: "}, 
+            {value: "", type: "number", id: "noAxle", placeholder: "e.g. 3", label:"Mod No Axles: "}, 
+            {value: "", type: "text", id: "adrCAT", placeholder: "e.g. TD", label:"ADR Category: "}, 
+            {value: "", type: "text", id: "seatCap", placeholder: "e.g. NA", label:"Seating Cap: "}, 
+            {value: "", type: "text", id: "bodStyle", placeholder: "e.g. Trailer", label:"Body Style: "}, 
+            {value: "", type: "number", id: "GVM", placeholder: "e.g. 38000", label:"GVM/ATM: "}, 
+            {value: "", type: "number", id: "GCM", placeholder: "e.g. 22500", label:"GCM/GTM: "},  // FLAG THEY SHOULD HAVE COMMAS
+            {value: "", type: "number", id: "SerNo", placeholder: "e.g. 014407", label:"Serial No: "}, 
         ]
 
         // get container that contains these values
@@ -511,8 +1035,48 @@ async function handleSelection(value) {
         })
 
 
-    } else if (value=="VIC_LIGHT") { 
+    } else if (value=="VIC_Light") { 
         //TODO impliment same logic as above
+        const fields = [
+            {value: "", type: "text", id:"plateSerialNumber", placeholder:"leave blank to auto-generate.", label:"Plate's Serial Number(for internal tracking) "}, 
+            {value: "", type: "text", id:"state", placeholder:"e.g. VIC", label:"State: "}, 
+            {value: today, type: "date", id:"date", placeholder:"", label:"Date: "}, 
+            {value: "", type: "text", id:"certNo", placeholder:"e.g. V0019683", label:"VASS Certificate No: "}, 
+            {value: "", type: "text", id:"make", placeholder:"e.g. 1999 Honda S2000", label:"Year/Make/Model: "}, 
+            {value: "", type: "text", id:"VIN", placeholder:"e.g. JT711TJB00B009068", label:"VIN/Chassis No: "}, 
+            {value: "", type: "number", id:"seatCap", placeholder:"e.g. 2", label:"Seating Cap: "}, 
+            {value: "", type: "text", id:"adrCAT", placeholder:"e.g. MA", label:"ADR Cat: "}, 
+            {value: "", type: "text", id:"bodStyle", placeholder:"e.g. Roadster", label:"Body Style: "}, 
+            {value: "", type: "text", id:"modCode", placeholder:"e.g. LS4, LS6", label:"Mod Codes: "}, 
+            {value: "", type: "number", id:"GVM", placeholder:"e.g. 7000", label:"Mod GVM: "}, 
+            {value: "", type: "text", id:"GCM", placeholder:"e.g. OEM", label:"Mod GCM: "}, 
+            {value: "", type: "number", id:"SerNo", placeholder:"e.g. 001020", label:"Ref/Ser No: "}, 
+        ]
+        
+        // get container that contains these values
+        const container = document.getElementById("engravingDetails");
+        container.innerHTML = ""; // clear the container
+
+        fields.forEach(field => {
+            //create label element
+            const label = document.createElement("label");
+            label.textContent = field.label;
+            label.for = field.id;
+            container.appendChild(label);
+
+            // create input element
+            const input = document.createElement("input");
+            input.type = field.type;
+            input.id = field.id;
+            input.placeholder = field.placeholder;
+            input.value = field.value;
+            container.appendChild(input);
+
+            // make line break
+            const br = document.createElement("br");
+            container.appendChild(br);
+        })
+
     }
 
     // refresh default settings
@@ -523,6 +1087,19 @@ async function handleSelection(value) {
         }, // still need headers even while sending plain text
         body: value
     })
+    const data = await response.json()
+    console.log(data)
+    // all JS objects are effectively dicts
+    for (const key in data) { // if a key is erronious it breaks entirely
+        const container = document.getElementById(key)
+        if (!container) {
+            console.warn("While loading initial settings, unrecognised key recieved. ")
+            continue
+        }
+        console.log(data[key])
+        container.value = data[key]
+    }
+
 
 
     return fields;
@@ -535,7 +1112,155 @@ window.addEventListener('DOMContentLoaded', function() {
         stateEl.value = 'QLD';
         handleSelection('QLD');
     }
+    // check for machine status
+    const response = fetch("/poll-Mstatus", {
+        method: "GET"
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById("mstatus_box").textContent = data.Mstatus; // load the data: may need to add "Machine Status: " string
+        document.getElementById("mstatus_box").style.backgroundColor = data.color;
+
+    })
+    console.log("status is : ", document.getElementById("mstatus_box").textContent)
+
+
+    const PosesInterval = 2000;
+    setTimeout(() => setInterval(populatePoses, PosesInterval), 60*1000)
+    const MstatusInterval = 10*1000
+    setTimeout(() => setInterval(pollStatus, MstatusInterval), 5.5*1000) // start the loop after 30 seconds of timeout
+
+
+const slider = document.getElementById('log-slider');
+const display = document.getElementById('jogSpeed');
+
+// Range for the output values (e.g., 100 to 10,000,000)
+const minVal = 0.01;
+const maxVal = 50;
+
+// Natural logs of the min and max values
+const minLog = Math.log(minVal);
+const maxLog = Math.log(maxVal);
+
+// Scale factor
+const scale = (maxLog - minLog) / 100;
+
+slider.addEventListener('input', () => {
+    // Calculate logarithmic value from slider position
+    const logValue = Math.exp(minLog + scale * slider.value);
+    display.value = (Math.round(logValue*100)/100).toLocaleString();
 });
+
+
+display.addEventListener('input', () => {
+    // const slider = document.getElementById('log-slider');
+    // const minVal = 0.01;
+    // const maxVal = 50;
+
+    // Natural logs of the min and max values
+    // const minLog = Math.log(minVal);
+    // const maxLog = Math.log(maxVal);
+    // const scale = (maxLog - minLog) / 100;
+    slider.value = (Math.round((Math.log(Number(display.value)) - minLog)/scale * 2)/2);
+
+})
+
+});
+
+function jogStep(modeValue) {
+    const speed = Number(document.getElementById("jogSpeed").value)
+
+    const response = fetch("/jogManualStep", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({speed: speed,
+                            direction: modeValue})
+    })
+    .then(response => console.log(response))  // hopefully prevent script from getting overloaded
+}
+
+function zeroXYWorking(modeValue) {
+    // send request with current tab information
+    const activetab = document.querySelector(".tab-content.active")
+    const response = fetch("/zeroworkingCoords", {
+        method: "POST",
+        header: {"content-Type": "application/json"},
+        body: JSON.stringify({type: "XY", 
+            tab: activetab
+        }).then(response = console.log(response))
+    })
+}
+
+
+function zeroZWorking() {
+    const activetab = document.querySelector(".tab-content.active")
+    const response = fetch("/zeroworkingCoords", {
+        method: "POST",
+        header: {"content-Type": "application/json"},
+        body: JSON.stringify({type: "Z", 
+            tab: activetab
+        }).then(response = console.log(response))
+    })
+}
+
+function saveMapping() {
+    const activetab = document.querySelector(".tab-content.active")
+    const response = fetch("/zeroworkingCoords", {
+        method: "POST",
+        header: {"content-Type": "application/json"},
+        body: JSON.stringify({type: "save", 
+            tab: activetab
+        }).then(response = console.log(response))
+    })
+}
+
+
+function convertPositions(positionName) {
+    // extract mapping from python script
+    const response = fetch("/getMapping", {
+        method: "GET"
+    })
+    .then(response => response.json())
+    .then(data => {
+        const mappingX = Number(data.x)
+        const mappingY = Number(data.y)
+        const mappingZ = Number(data.z)
+
+            console.log(mappingX)
+            console.log(mappingY)
+            console.log(mappingZ)
+
+            if (positionName == "Machine") {
+                // convert to machine
+                // mapping = wPos - mPos
+                // mPos = wPos - mapping
+                const wPosX = document.getElementById("jogPosX")
+                const wPosY = document.getElementById("jogPosY")
+                const wPosZ = document.getElementById("jogPosZ")
+
+                console.log(typeof mappingX, typeof parseFloat(wPosX.value))
+                console.log(typeof mappingY, typeof parseFloat(wPosY.value))
+                console.log(typeof mappingZ, typeof parseFloat(wPosZ.value))
+
+                wPosX.value = (parseFloat(wPosX.value) - mappingX).toFixed(3)
+                wPosY.value = (parseFloat(wPosY.value) - mappingY).toFixed(3)
+                wPosZ.value = (parseFloat(wPosZ.value) - mappingZ).toFixed(3)
+            } else {
+                // convert to work
+                const mPosX = document.getElementById("jogPosX")
+                const mPosY = document.getElementById("jogPosY")
+                const mPosZ = document.getElementById("jogPosZ")
+
+                mPosX.value = (parseFloat(mPosX.value) + mappingX).toFixed(3)
+                mPosY.value = (parseFloat(mPosY.value) + mappingY).toFixed(3)
+                mPosZ.value = (parseFloat(mPosZ.value) + mappingZ).toFixed(3)
+            }
+    })
+
+
+    
+}
+
 
 function openTab(tabName) {
     // Hide all tabs
@@ -553,6 +1278,165 @@ function openTab(tabName) {
 
     // Highlight selected tab button
     event.target.classList.add("active");
+}
+
+function movePosition() {
+    // send the current position, and what we are currently measuring in for python to move spindle
+    const posX = document.getElementById("jogPosX").value
+    const posY = document.getElementById("jogPosY").value
+    const posZ = document.getElementById("jogPosZ").value
+
+    const measurementMethod = document.getElementById("jogType").value
+
+    const response = fetch("/manualJog", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({x: posX, 
+                                y: posY, 
+                                z: posZ, 
+                                method: measurementMethod
+        })
+    }).then(response => response.json())
+}
+
+function populatePoses() {
+    // fetch a gets to get pose from machine. 
+    const response = fetch("/pollPoses", {
+        method: "GET"
+    }).then(response => response.json())
+    .then(data => {
+        document.getElementById("mPosX").value = data.mPosX
+        document.getElementById("mPosY").value = data.mPosY
+        document.getElementById("mPosZ").value = data.mPosZ
+
+        document.getElementById("wPosX").value = data.wPosX
+        document.getElementById("wPosY").value = data.wPosY
+        document.getElementById("wPosZ").value = data.wPosZ
+    })
+}
+
+function pollStatus() {
+    console.log("Polling for status from machine...")
+    const response = fetch("/poll-Mstatus", {
+        method: "GET"
+        
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById("mstatus_box").textContent = data.Mstatus; // load the data: may need to add "Machine Status: " string
+    })
+    
+}
+
+function enableKeyboardJogControl() {
+    if (window.keyboardControlBool == false) {
+        window.keyboardControlBool = true
+    // display the operation instructions
+        const instructs = document.getElementById("manual-jog-settings")
+
+        if (instructs.style.display === "none") {
+            instructs.style.display = "block";
+        } else {
+            instructs.style.display = "none";
+        }
+
+        // reset slider
+        const slider = document.getElementById('log-slider');
+        const display = document.getElementById('jogSpeed');
+
+        const minVal = 0.01;
+        const maxVal = 50;
+        const minLog = Math.log(minVal);
+        const maxLog = Math.log(maxVal);
+        const scale = (maxLog - minLog) / 100;
+
+        display.value = 0.01;
+        slider.value = (Math.round((Math.log(0.01) - minLog)/scale * 2)/2);
+
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "start"
+        })
+        .then(response => console.log(response))  // return the machine position afterthe step moves
+
+        // add event listener as a loop 
+        document.addEventListener('keydown', handleKeyboardEvent)
+    } else {
+        document.removeEventListener('keydown', handleKeyboardEvent)
+        window.keyboardControlBool = false;
+
+    }
+
+   
+}
+
+function handleKeyboardEvent(event) {
+    const keyIn = event.key.toLowerCase()
+
+    if (keyIn == "w") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "up"
+        })
+        .then(response => console.log(response)) 
+    } else if (keyIn == "s") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "down"
+        })
+        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+    } else if (keyIn == "a") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "left"
+        })
+        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+    } else if (keyIn == "d") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "right"
+        })
+        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+    } else if (keyIn == "q") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "low"
+        })
+        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+    } else if (keyIn == "e") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "high"
+        })
+        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+    } else if (keyIn == "p") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "spd"
+        })
+        .then(response => response.json())  // response == spindle speed 
+        .then(data => {
+            document.getElementById('jogSpeed').value = data.speed
+            document.getElementById('log-slider').value = (Math.round((Math.log(Number(data.speed)) - minLog)/scale * 2)/2)
+        })
+
+    } else if (keyIn == "o") {
+        const response = fetch("/jogAutoStep", {
+            method: "POST",
+            headers: {'Content-Type': 'text/plain'},
+            body: "on"
+        })
+        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+    }
+
 }
 
 </script>
