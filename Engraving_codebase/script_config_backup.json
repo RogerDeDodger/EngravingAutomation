@@ -1,0 +1,35 @@
+{
+    "notes": "Configuration save file for current engraving session",
+    "mapping_work": [
+        200.006,
+        150.558,
+        26.976
+    ],
+    "mapping_lath": [
+        200.503,
+        152.805,
+        25.996
+    ],
+    "islath": false,
+    "wPos_home": [
+        0,
+        115,
+        15
+    ],
+    "finish_wPos": [
+        -0.0,
+        115.001,
+        15.0
+    ],
+    "beddim": [
+        100.0,
+        50.0
+    ],
+    "year": "25",
+    "plate_counter": [
+        32,
+        35,
+        40,
+        3
+    ]
+}
