@@ -632,9 +632,9 @@ datalist {
             <button class="big-button blue" onclick=showPlateInfo() style="display: none" id="showInput">Show input</button>
             <button class="movement-button" onclick=startEngraving()><i class="fa-solid fa-print"></i>Engrave Plate</button>
             <div id="engravingProgressBar" style="display: none">
-                <label>Engraving Progress: </label>
+                <label for="progressBar">Engraving Progress: </label>
                 <progress id="progressBar" value="0" max="100"></progress>
-                <label id="engravingProgressBarLabel">-minutes</label>
+                <span id="engravingProgressBarLabel">-minutes</span>
             </div>
         </div>
     </div> 
@@ -836,7 +836,8 @@ async function startEngraving() {
     const progresscontainer = document.getElementById("engravingProgressBar")
     const progressEstText = document.getElementById("engravingProgressBarLabel")
     progresscontainer.style.display = "block"
-    progressEstText.value = formatHHMMSS(data["timeEst"]); // timeEst in seconds
+    console.log(formatHHMMSS(data["timeEst"]))
+    progressEstText.textContent = formatHHMMSS(data["timeEst"]); // timeEst in seconds
     progressEstText.style.display = "block"
     
 
@@ -870,7 +871,7 @@ function updateProgressBar(timeEst) {
         progressbar.value = 0
     } else {
         progressbar.value = progressbar.value + 1
-        progressEstText.value = formatHHMMSS(timeEst*(100-progressbar.value)/100) // FLAG YET TO BE TESTED
+        progressEstText.textContent = formatHHMMSS(timeEst*(100-progressbar.value)/100) // FLAG YET TO BE TESTED
     }
 }
 
