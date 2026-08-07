@@ -392,6 +392,7 @@ datalist {
         <div class="panel">
             <h2>Machine Control</h2>
             <button class="big-button green" onclick="unlockMachine()">Unlock</button>
+            <button class="big-button green" onclick="home()">Home</button>
             <button class="big-button red" onclick="eStop()">Emergency Stop</button>
         </div>
 
@@ -486,7 +487,13 @@ datalist {
                 <div id="manual-jog-settings" style="display:none"> <!--FLAG debug-->
                 <ul>
                     <li>use wasd-qe for x, y, z movements</li>
-                    <li>use p to toggle movement speed</li>
+                    <li>   w: positive y</li>
+                    <li>   a: negative x</li>
+                    <li>   s: negative y</li>
+                    <li>   d: positive x</li>
+                    <li>   q: negative z</li>
+                    <li>   e: positive e</li>
+                    <li>use p to toggle through movement speed (mm)</li>
                     <li>use o to toggle spindle on/off</li>
                 </ul>
                 </div>
@@ -519,7 +526,7 @@ datalist {
                 <label for="states">Plate's State of Jurisdiction:</label>
                 <select name="state" id="state" onchange="handleSelection(this.value)">
                     <option value="QLD">Queensland</option>
-                    <option value="NSW">New South Whales</option>
+                    <option value="NSW">New South Wales</option>
                     <Option value="VIC_Heavy">Heavy Vehicle Mod Plates</Option>
                     <option value="VIC_Light">Light Vehicle Mod Plates</option>
                 </select>
@@ -589,7 +596,7 @@ datalist {
 
                     <label>Line Spacing </label>
                     <input type="number" id="lineSpacing" value="">
-                    <label for="lineSpacing">% of Text Height</label><br>
+                    <label for="lineSpacing"> * text Height</label><br>
 
                     <label> Text Angle </label>
                     <input type="number" id="textAngle" value="">
@@ -627,6 +634,7 @@ datalist {
             <div id="engravingProgressBar" style="display: none">
                 <label>Engraving Progress: </label>
                 <progress id="progressBar" value="0" max="100"></progress>
+                <label id="engravingProgressBarLabel">-minutes</label>
             </div>
         </div>
     </div> 
@@ -642,28 +650,7 @@ datalist {
 </div>
 
 <script>
-    var keyboardControlBool = false
-    // create a anon function to define
-    window.onload = async function() { 
-        // fill fields with default values assume default state is QLD
-        const response = await fetch("/reload_engraver_settings", {
-            method: "POST", 
-            headers: {"content-Type": "text/plain"},
-            body: "QLD"
-        })
-        const data = await response.json() // extract the json from the response and can be used as data.key
-        console.log(data)
-        // all JS objects are effectively dicts
-        for (const key in data) { // if a key is erronious it breaks entirely
-            const container = document.getElementById(key)
-            if (!container) {
-                console.warn("While loading initial settings, unrecognised key recieved. ")
-                continue
-            }
-            console.log(data[key])
-            container.value = data[key]
-        }
-    };
+var keyboardControlBool = false
 
 function dispMoreEngDetails() {
     const moreSettings = document.getElementById("moreEngravingSettings");
@@ -762,7 +749,7 @@ async function saveInput() {
     })
     if (!response.ok) throw new Error("Network error");
     const dataString = await response.text() // I think i also need an await for the response.text 
-    console.log(dataString)
+    // console.log(dataString)
     document.getElementById("textInfoContainer").style.display = "none" // clears panel1 contents FLAG make it turn all elements to invisible instead 
     // FLAG make the button disappear and replace with see settings
     // print plate button
@@ -777,6 +764,16 @@ async function saveInput() {
 
     returnbutton.style.display = "block"
     previewButton.style.display = "none"
+}
+function formatHHMMSS(totalSeconds) {
+  totalSeconds = Math.floor(totalSeconds); // guard against decimals
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const pad = (n) => String(n).padStart(2, "0");
+
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 let progressID;
@@ -832,15 +829,19 @@ async function startEngraving() {
     const data = await response.json() // load in a progress bar from estimated time
 
     // FLAG REMOVE LATER
-    console.log(data)
+    // console.log(data)
     document.getElementById("mstatus_box").style.backgroundColor = "#6495ED"
     document.getElementById("mstatus_box").textContent = "Running"
 
     const progresscontainer = document.getElementById("engravingProgressBar")
+    const progressEstText = document.getElementById("engravingProgressBarLabel")
     progresscontainer.style.display = "block"
+    progressEstText.value = formatHHMMSS(data["timeEst"]); // timeEst in seconds
+    progressEstText.style.display = "block"
+    
 
     // create progress bar and a web progress update ticker
-    progressID = setInterval(updateProgressBar, data["timeEst"]*1000/100)
+    progressID = setInterval(updateProgressBar, data["timeEst"]*1000/100, data["timeEst"])
     
 
     // send the gcode
@@ -855,17 +856,21 @@ async function startEngraving() {
 
 }
 
-function updateProgressBar() { 
+function updateProgressBar(timeEst) { 
     const progressbar = document.getElementById("progressBar")
+    const progressEstText = document.getElementById("engravingProgressBarLabel")
     if (progressbar.value == 100) {
         clearInterval(progressID)
         const progresscontainer = document.getElementById("engravingProgressBar")
+        
         progresscontainer.style.display = "none"
+        progressEstText.style.display = "none"
         document.getElementById("mstatus_box").style.backgroundColor = "#4F7942"
         document.getElementById("mstatus_box").textContent = "Idle"
         progressbar.value = 0
     } else {
         progressbar.value = progressbar.value + 1
+        progressEstText.value = formatHHMMSS(timeEst*(100-progressbar.value)/100) // FLAG YET TO BE TESTED
     }
 }
 
@@ -901,6 +906,12 @@ function eStop() {
     .then(response => response.json())
 }
 
+function home() {
+    fetch('/home', {
+        method: "GET"
+    }) // FLAG yet to be tested
+    .then(response => response.json())
+}
 
 
 function loadDefaultSettings() {
@@ -1048,7 +1059,7 @@ async function handleSelection(value) {
             {value: "", type: "text", id:"adrCAT", placeholder:"e.g. MA", label:"ADR Cat: "}, 
             {value: "", type: "text", id:"bodStyle", placeholder:"e.g. Roadster", label:"Body Style: "}, 
             {value: "", type: "text", id:"modCode", placeholder:"e.g. LS4, LS6", label:"Mod Codes: "}, 
-            {value: "", type: "number", id:"GVM", placeholder:"e.g. 7000", label:"Mod GVM: "}, 
+            {value: "", type: "text", id:"GVM", placeholder:"e.g. 7000", label:"Mod GVM: "}, 
             {value: "", type: "text", id:"GCM", placeholder:"e.g. OEM", label:"Mod GCM: "}, 
             {value: "", type: "number", id:"SerNo", placeholder:"e.g. 001020", label:"Ref/Ser No: "}, 
         ]
@@ -1088,7 +1099,7 @@ async function handleSelection(value) {
         body: value
     })
     const data = await response.json()
-    console.log(data)
+    // console.log(data)
     // all JS objects are effectively dicts
     for (const key in data) { // if a key is erronious it breaks entirely
         const container = document.getElementById(key)
@@ -1096,7 +1107,7 @@ async function handleSelection(value) {
             console.warn("While loading initial settings, unrecognised key recieved. ")
             continue
         }
-        console.log(data[key])
+        // console.log(data[key])
         container.value = data[key]
     }
 
@@ -1111,7 +1122,7 @@ window.addEventListener('DOMContentLoaded', function() {
     if (stateEl) {
         stateEl.value = 'QLD';
         handleSelection('QLD');
-    }
+    } // make QLD the default state
     // check for machine status
     const response = fetch("/poll-Mstatus", {
         method: "GET"
@@ -1122,13 +1133,13 @@ window.addEventListener('DOMContentLoaded', function() {
         document.getElementById("mstatus_box").style.backgroundColor = data.color;
 
     })
-    console.log("status is : ", document.getElementById("mstatus_box").textContent)
+    // console.log("status is : ", document.getElementById("mstatus_box").textContent)
 
 
-    const PosesInterval = 2000;
-    setTimeout(() => setInterval(populatePoses, PosesInterval), 60*1000)
-    const MstatusInterval = 10*1000
-    setTimeout(() => setInterval(pollStatus, MstatusInterval), 5.5*1000) // start the loop after 30 seconds of timeout
+    const PosesInterval = 1000;
+    setTimeout(() => setInterval(populatePoses, PosesInterval), 1*1000)
+    const MstatusInterval = 5*1000
+    setTimeout(() => setInterval(pollStatus, MstatusInterval), 0.5*1000) // start the loop after 30 seconds of timeout
 
 
 const slider = document.getElementById('log-slider');
@@ -1176,7 +1187,7 @@ function jogStep(modeValue) {
         body: JSON.stringify({speed: speed,
                             direction: modeValue})
     })
-    .then(response => console.log(response))  // hopefully prevent script from getting overloaded
+    .then(response => response)  // hopefully prevent script from getting overloaded
 }
 
 function zeroXYWorking(modeValue) {
@@ -1187,7 +1198,7 @@ function zeroXYWorking(modeValue) {
         header: {"content-Type": "application/json"},
         body: JSON.stringify({type: "XY", 
             tab: activetab
-        }).then(response = console.log(response))
+        }).then(response = response)
     })
 }
 
@@ -1199,7 +1210,7 @@ function zeroZWorking() {
         header: {"content-Type": "application/json"},
         body: JSON.stringify({type: "Z", 
             tab: activetab
-        }).then(response = console.log(response))
+        }).then(response = response) // all previous is console.log
     })
 }
 
@@ -1210,7 +1221,7 @@ function saveMapping() {
         header: {"content-Type": "application/json"},
         body: JSON.stringify({type: "save", 
             tab: activetab
-        }).then(response = console.log(response))
+        }).then(response = response)
     })
 }
 
@@ -1226,9 +1237,9 @@ function convertPositions(positionName) {
         const mappingY = Number(data.y)
         const mappingZ = Number(data.z)
 
-            console.log(mappingX)
-            console.log(mappingY)
-            console.log(mappingZ)
+            // console.log(mappingX)
+            // console.log(mappingY)
+            // console.log(mappingZ)
 
             if (positionName == "Machine") {
                 // convert to machine
@@ -1238,9 +1249,9 @@ function convertPositions(positionName) {
                 const wPosY = document.getElementById("jogPosY")
                 const wPosZ = document.getElementById("jogPosZ")
 
-                console.log(typeof mappingX, typeof parseFloat(wPosX.value))
-                console.log(typeof mappingY, typeof parseFloat(wPosY.value))
-                console.log(typeof mappingZ, typeof parseFloat(wPosZ.value))
+                // console.log(typeof mappingX, typeof parseFloat(wPosX.value))
+                // console.log(typeof mappingY, typeof parseFloat(wPosY.value))
+                // console.log(typeof mappingZ, typeof parseFloat(wPosZ.value))
 
                 wPosX.value = (parseFloat(wPosX.value) - mappingX).toFixed(3)
                 wPosY.value = (parseFloat(wPosY.value) - mappingY).toFixed(3)
@@ -1305,25 +1316,30 @@ function populatePoses() {
         method: "GET"
     }).then(response => response.json())
     .then(data => {
-        document.getElementById("mPosX").value = data.mPosX
-        document.getElementById("mPosY").value = data.mPosY
-        document.getElementById("mPosZ").value = data.mPosZ
+        if (data != "OK") {
+            document.getElementById("mPosX").value = data.mPosX
+            document.getElementById("mPosY").value = data.mPosY
+            document.getElementById("mPosZ").value = data.mPosZ
 
-        document.getElementById("wPosX").value = data.wPosX
-        document.getElementById("wPosY").value = data.wPosY
-        document.getElementById("wPosZ").value = data.wPosZ
+            document.getElementById("wPosX").value = data.wPosX
+            document.getElementById("wPosY").value = data.wPosY
+            document.getElementById("wPosZ").value = data.wPosZ
+        }
+
     })
 }
 
 function pollStatus() {
-    console.log("Polling for status from machine...")
+    // console.log("Polling for status from machine...")
     const response = fetch("/poll-Mstatus", {
         method: "GET"
         
     })
     .then(response => response.json())
     .then(data => {
-        document.getElementById("mstatus_box").textContent = data.Mstatus; // load the data: may need to add "Machine Status: " string
+        if (data != "OK") {
+            document.getElementById("mstatus_box").textContent = data.Mstatus; // load the data: may need to add "Machine Status: " string
+        }
     })
     
 }
@@ -1358,7 +1374,7 @@ function enableKeyboardJogControl() {
             headers: {'Content-Type': 'text/plain'},
             body: "start"
         })
-        .then(response => console.log(response))  // return the machine position afterthe step moves
+        // .then(response => response)  // return the machine position afterthe step moves
 
         // add event listener as a loop 
         document.addEventListener('keydown', handleKeyboardEvent)
@@ -1366,7 +1382,16 @@ function enableKeyboardJogControl() {
         document.removeEventListener('keydown', handleKeyboardEvent)
         window.keyboardControlBool = false;
 
+        // remove instructions if switch is off
+        const instructs = document.getElementById("manual-jog-settings")
+
+        if (instructs.style.display === "none") {
+            instructs.style.display = "block";
+        } else {
+            instructs.style.display = "none";
+        }
     }
+
 
    
 }
@@ -1380,42 +1405,42 @@ function handleKeyboardEvent(event) {
             headers: {'Content-Type': 'text/plain'},
             body: "up"
         })
-        .then(response => console.log(response)) 
+        // .then(response => console.log(response)) 
     } else if (keyIn == "s") {
         const response = fetch("/jogAutoStep", {
             method: "POST",
             headers: {'Content-Type': 'text/plain'},
             body: "down"
         })
-        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+        // .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
     } else if (keyIn == "a") {
         const response = fetch("/jogAutoStep", {
             method: "POST",
             headers: {'Content-Type': 'text/plain'},
             body: "left"
         })
-        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+        // .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
     } else if (keyIn == "d") {
         const response = fetch("/jogAutoStep", {
             method: "POST",
             headers: {'Content-Type': 'text/plain'},
             body: "right"
         })
-        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+        // .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
     } else if (keyIn == "q") {
         const response = fetch("/jogAutoStep", {
             method: "POST",
             headers: {'Content-Type': 'text/plain'},
             body: "low"
         })
-        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+        // .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
     } else if (keyIn == "e") {
         const response = fetch("/jogAutoStep", {
             method: "POST",
             headers: {'Content-Type': 'text/plain'},
             body: "high"
         })
-        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+        // .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
     } else if (keyIn == "p") {
         const response = fetch("/jogAutoStep", {
             method: "POST",
@@ -1434,7 +1459,7 @@ function handleKeyboardEvent(event) {
             headers: {'Content-Type': 'text/plain'},
             body: "on"
         })
-        .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
+        // .then(response => console.log(response))  // hopefully prevent script from getting overloaded 
     }
 
 }

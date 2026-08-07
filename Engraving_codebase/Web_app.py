@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, abort
 import subprocess
 import threading
 from matplotlib import pyplot as plt
@@ -21,73 +21,97 @@ mapping = None
 sesh_config = None
 spindle_on_bool = False
 serialLock = threading.Lock()
+statusLock  = threading.Lock() # I can make multiple lock objects as long as you don't chain them and create deadlock
+pollLock = threading.Lock()
+homing_in_progress = threading.Event()
+_session = {"ip": None, "last_seen": 0}
+HEARTBEAT_TIMEOUT = 60 # connection releases after 60 seconds
+DISCONNECT_TIMEOUT = 3*60*60 # timeout to restart the polling process
+
 spdIdx = 2
 
 @app.route("/")
-def home():
+def hometmplate():
     return render_template("index.html")
+
+
 
 @app.route("/poll-Mstatus", methods=["GET"])
 def pollStatus(): 
-    # declare global and ensure changes stay
-    global mStarted
-    global ser
-    global mapping
+    with pollLock: 
+        # declare global and ensure changes stay
+        global mStarted
+        global ser
+        global mapping
 
-    if not mStarted: 
-        mStarted = True
-        ser = send_wakeup()
+        # reset machine cache if disconnected
+        if abs(time.time() - _session["last_seen"]) > DISCONNECT_TIMEOUT:
+            mStarted = False
+            ser = None
+            mapping = None
 
-        global config_path
-        global sesh_config
-        with open(config_path, "r") as f: 
-            config_dict = json.load(f)
-            sesh_config = config(**config_dict)
 
-        # load in the mapping
-        mapping = sesh_config.mapping_work
+        if not mStarted: 
+            # start the machine first
+            global config_path
+            global sesh_config
+
+            with serialLock: 
+                ser = send_wakeup()
+
+            # load in config
+            with open(config_path, "r") as f: 
+                config_dict = json.load(f)
+                sesh_config = config(**config_dict)
+
+            mapping = sesh_config.mapping_work
+            
+
+            ser = homeNcalibrate_Web(ser, mapping, sesh_config.finish_wPos)
+
+
+            mStarted = True
+            
+            # initiate auto starting sequence - catch for startup sequence, load in config file
+
+        elif not ser.is_open: 
+            port = scan_grbl_port(115200)
+            ser = send_wakeup(port=port)
+            # restart starting sequence to zero and map
 
         with serialLock: 
-            ser = homeNcalibrate(ser, mapping, sesh_config.finish_wPos)
+            ser.reset_input_buffer()
+            ser.write(b"?")
+            time.sleep(0.5)
+            response = ser.read_until(b'>').decode()
 
-        mStarted = True
-        # initiate auto starting sequence - catch for startup sequence, load in config file
+        # print(response)
+        while True: 
+            if response.find('Grbl 0.9j') == -1: 
+                try: 
+                    status = response[response.index("<")+1:response.index(",M")]
+                except: 
+                    time.sleep(1)
+                    continue
 
-    elif not ser.is_open: 
-        port = scan_grbl_port(115200)
-        ser = send_wakeup(port=port)
-        # restart starting sequence to zero and map
+                statuses = ["idle", "run", "home", "alarm", 'hold']
+                statusIdx = statuses.index(status.lower())
+                colors = ["#4F7942", "#6495ED", "#7B4000", "#FF1540", "#FF5F15"] # #FF5F15 is hex code for safety orange
+                # [idle, Run, Home, Alarm]
 
-    with serialLock: 
-        ser.reset_input_buffer()
-        ser.write(b"?")
-        time.sleep(0.5)
-        response = ser.read_until(b'>').decode()
-
-    print(response)
-    while True: 
-        if response.find('Grbl 0.9j') == -1: 
-            try: 
-                status = response[response.index("<")+1:response.index(",M")]
-            except: 
-                time.sleep(1)
-                continue
-
-            statuses = ["idle", "run", "home", "alarm", 'hold']
-            statusIdx = statuses.index(status.lower())
-            colors = ["#4F7942", "#6495ED", "#7B4000", "#FF1540", "#FF5F15"] # #FF5F15 is hex code for safety orange
-            # [idle, Run, Home, Alarm]
-
-            if statusIdx == -1:
-                colors = "black"
-            print(colors[statusIdx])
-            return jsonify({"Mstatus": status, 
-                            "color": colors[statusIdx]})
-        else: 
-            with serialLock: 
-                ser.write(b"?")
-                time.sleep(0.5)
-                response = ser.read_until(b'>').decode()
+                if statusIdx == -1:
+                    color = "black"
+                # print(colors[statusIdx])
+                    return jsonify({"Mstatus": status, 
+                                    "color": color})
+                else: 
+                    return jsonify({"Mstatus": statuses[statusIdx], 
+                        "color": colors[statusIdx]})
+            else: 
+                with serialLock: 
+                    ser.write(b"?")
+                    time.sleep(0.5)
+                    response = ser.read_until(b'>').decode()
         
 
 
@@ -100,6 +124,17 @@ def unlockMachine():
         unlock(ser)
     return "ok"
 
+@app.route("/home", methods=["GET"])
+def home(): 
+    global ser
+    if homing_in_progress.is_set():
+        return jsonify({"status": "already homing"}), 409
+    homing_in_progress.set()
+    try:
+        ser = homeNcalibrate_Web(ser, mapping, sesh_config.finish_wPos)
+        return jsonify({"status": "ok"})
+    finally:
+        homing_in_progress.clear()
 
 @app.route("/estop", methods=["GET"])
 def softStop(): 
@@ -118,7 +153,8 @@ def jogManualStep():
     print("received data:", data)
     speed = float(data['speed'])
     direciton = data['direction']
-    ser, spindle_on_bool = jog_web(ser, speed, direciton, spindle_on_bool)
+    with serialLock: 
+        ser, spindle_on_bool = jog_web(ser, speed, direciton, spindle_on_bool)
 
     return "ok"
 
@@ -223,39 +259,61 @@ def manualJog():
         mPosZ = float(data["z"])
 
     cmd = f"G53 X{mPosX:.3f} Y{mPosY:.3f} Z{mPosZ:.3f}\n"
-    ser.write(str.encode(cmd))
-    wait_for_movement_completion(ser, cmd)
+    with serialLock: 
+        ser.write(str.encode(cmd))
+        wait_for_movement_completion(ser, cmd)
 
 @app.route("/pollPoses", methods=["GET"])
 def pollPoses(): 
-    # poll ser and wait for response
-    with serialLock: 
-        ser.write(b"?")
-        string = ser.read_until(b'>').decode()   # this reads the closes 100 bytes, most likely performance error
-        print(string)
-    if string.find("WPos") != -1 and string.find("MPos") != -1: 
-        MPos = string[string.index("M")+5:string.index("W")-1]
-        MPos = tuple(float(i) for i in MPos.split(","))
+    """
+    
+    performs one serial poll of "?" and record the response cordinate system. 
 
-        WPos = string[int(string.index("W")+5):string.index(">")]
-        WPos = tuple(float(i) for i in WPos.split(","))
-        print(MPos)
-        print(WPos)
-        return jsonify({"mPosX": float(MPos[0]), 
-                        "mPosY": float(MPos[1]), 
-                        "mPosZ": float(MPos[2]),
-                        "wPosX": float(WPos[0]), 
-                        "wPosY": float(WPos[1]),
-                        "wPosZ": float(WPos[2])
-        })
-    else: 
-        return jsonify({"mPosX": 0, 
-                        "mPosY": 0, 
-                        "mPosZ": 0,
-                        "wPosX": 0, 
-                        "wPosY": 0,
-                        "wPosZ": 0
-        })
+    """
+    with pollLock: 
+        ip = _get_client_ip()
+        if _session["ip"] == ip or _lock_is_stale():
+            _session["ip"] = ip
+            _session["last_seen"] = time.time()
+
+        with serialLock: 
+            try: 
+                ser.write(b"?")
+                string = ser.read_until(b'>').decode()   
+            except: 
+                return jsonify({"mPosX": 0, 
+                            "mPosY": 0, 
+                            "mPosZ": 0,
+                            "wPosX": 0, 
+                            "wPosY": 0,
+                            "wPosZ": 0
+            })
+
+
+                
+        if string.find("WPos") != -1 and string.find("MPos") != -1: 
+            MPos = string[string.index("M")+5:string.index("W")-1]
+            MPos = tuple(float(i) for i in MPos.split(","))
+
+            WPos = string[int(string.index("W")+5):string.index(">")]
+            WPos = tuple(float(i) for i in WPos.split(","))
+
+
+            return jsonify({"mPosX": float(MPos[0]), 
+                            "mPosY": float(MPos[1]), 
+                            "mPosZ": float(MPos[2]),
+                            "wPosX": float(WPos[0]), 
+                            "wPosY": float(WPos[1]),
+                            "wPosZ": float(WPos[2])
+            })
+        else: 
+            return jsonify({"mPosX": 0, 
+                            "mPosY": 0, 
+                            "mPosZ": 0,
+                            "wPosX": 0, 
+                            "wPosY": 0,
+                            "wPosZ": 0
+            })
 
 
 
@@ -331,7 +389,6 @@ def reload_engraver_settings():
         elif line.find("YSCALE") != -1: 
             # textheight
             values = line.split()
-            print(values)
             settings.update({"textHeight": values[2]})
         elif line.find("STHICK") != -1: 
             values = line.split()
@@ -418,16 +475,108 @@ def get_settings():
                     "finishX": 100, 
                     "finishY": 100})
 
-# @app.route('/generatePreview', methods=['GET'])
-# def generatePreview():
-#     global previewGenerationFinished
-#     # Wait for preview to be generated
-#     while not previewGenerationFinished:
-#         time.sleep(0.1)  # short sleep to avoid busy waiting
-#     # Reset the flag
-#     previewGenerationFinished = False
-#     print(f"Returning preview URL: /{previewPath}")
-#     return jsonify({"preview_url": f"/{previewPath}"})
+def _get_client_ip():
+    # if you ever put this behind nginx/a proxy, use X-Forwarded-For instead
+    return request.remote_addr
 
+def _lock_is_stale():
+    return (time.time() - _session["last_seen"]) > HEARTBEAT_TIMEOUT
+
+@app.before_request
+def enforce_single_user():
+    # let the heartbeat/release endpoints handle their own logic
+    if request.endpoint in ("heartbeat", "release", "static"):
+        return
+
+    ip = _get_client_ip()
+    with serialLock:
+        if _session["ip"] is None or _lock_is_stale():
+            # nobody holds it, or previous holder timed out -> take it
+            _session["ip"] = ip
+            _session["last_seen"] = time.time()
+        elif _session["ip"] != ip:
+            # someone else has it and is still active
+            abort(423, description="Another user is currently controlling the Engraving machine.")
+        else:
+            # same user, refresh
+            _session["last_seen"] = time.time()
+
+
+@app.errorhandler(423)
+def locked(e):
+    return f"Someone else is currently connected to the CNC Engraving Machine. Please try again shortly. \n Connection IP: {_session['ip']} \n last seen: {_session['last_seen']}", 423
+
+def homeNcalibrate_Web(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25)):
+    with serialLock:
+        ser.reset_input_buffer()
+        # machine takes time to boot up, only proceed with command untill it has boooted up
+        # bootup message: 
+        # Grbl 0.9j ['$' for help]
+        # ['$H'|'$X' to unlock]
+        time.sleep(2)
+        msg = ser.read_until(b"unlock]").decode()
+        ser.write(b"$H\n")
+        print("waiting")
+        wait_for_movement_completion_Web(ser, "$H\n")
+        print("calculating mPos")
+        mPos = (wPos[0] - mapping[0], wPos[1] - mapping[1], wPos[2] - mapping[2])
+        home_cmd = f"G53 X{mPos[0]:.3f} Y{mPos[1]:.3f} Z{mPos[2]:.3f}\n"
+        print("writing the home movement command")
+        ser.write(str.encode(home_cmd))
+        wait_for_idle(ser)          # now inside the same lock
+
+        time.sleep(2)
+        print("calculating wpos")
+        work_cmd = f"G92 X{wPos[0]:.3f} Y{wPos[1]:.3f} Z{wPos[2]:.3f}\n"
+        print("writing work reset command")
+        ser.write(str.encode(work_cmd))
+        wait_for_idle(ser)          # and here too
+
+    return ser
+
+
+def wait_for_movement_completion_Web(ser, clean_cmd_line): 
+    # Event().wait(1)
+    if clean_cmd_line not in ("$X", "$$"): 
+        cmd_out = ser.readline().strip().decode()
+        temp_counter = 0
+        while cmd_out != "ok": 
+
+            print("inside loop")
+            if "alarm" in cmd_out.lower():
+
+                print("Machine in Alarm state!")
+                ser.write(b"$H\n")
+                pass
+
+            
+            if "error" in cmd_out:
+                # print the error out
+                print(f"ERROR sending {clean_cmd_line}: {cmd_out}")
+            elif "hard" in cmd_out.lower(): 
+                print("Hard Limit reached! Manually move spindle away from limit switches and restart.")
+                break
+            time.sleep(1)
+
+            cmd_out = ser.readline().strip().decode()
+            print(cmd_out)
+            temp_counter += 1
+
+            if temp_counter >= 1000: 
+                break
+
+        
+        return None
+
+def heartbeat_communication(): 
+    """
+    
+    
+    """
+
+    
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001)
+    # establish a port lock for the application to prevent multiple users from connecting 
+    app.run(host="0.0.0.0", port=5000)
+
+    # create a thread that sends some sorta heartbeat signal despite website disconnection

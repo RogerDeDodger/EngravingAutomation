@@ -93,7 +93,7 @@ def send_wakeup(ser=None, port="/dev/ttyUSB0",baud=115200):
         ser.reset_input_buffer()
         return ser
     else: 
-        ser = serial.Serial(port, baud, timeout=1)
+        ser = serial.Serial(port, baud, timeout=2, exclusive=True) # FLAG prevent threading issues
         time.sleep(1)
         ser.write(b"\r\n\r\n")
         ser.reset_input_buffer()
@@ -147,16 +147,9 @@ def homeNcalibrate(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25), v
     if verbose: 
         print("homing")
     ser.reset_input_buffer()
-    ser.write(b"?") # probes Mpos
-    time.sleep(2)
-    string = ser.read(100).decode()
-    ser.write(b"?") # probes Mpos
-    time.sleep(2)
-    string = ser.read(100).decode()
-    ser.reset_input_buffer()
     ser.write(b"$H\n")
      # NEED /n to execute the command
-
+    time.sleep(40)
     wait_for_movement_completion(ser,"$H\n", verbose=verbose)
     mPos = (wPos[0] - mapping[0], wPos[1] - mapping[1], wPos[2] - mapping[2])
     home_cmd = f"G53 X{mPos[0]:.3f} Y{mPos[1]:.3f} Z{mPos[2]:.3f}\n"
@@ -591,7 +584,7 @@ def jog_web(ser, speed, direction, spindle_on_bool):
 def estimate_time(ser, gcode_path): 
     '''
     
-    estimate the time it would take to engrave in ms
+    estimate the time it would take to engrave in s
 
     distance travelled & number of stops/adjustments
     
@@ -724,11 +717,13 @@ def estimate_time(ser, gcode_path):
         m = np.linalg.inv(A) @ ef 
     except: 
         m = np.array([[0], [0]])
-    bias = y_bar - m[0]*x_bar - m[1]*u_bar     # y 
+    m1 = float(m[0])
+    m2 = float(m[1])
+    bias = y_bar - m1*x_bar - m2*u_bar     # y 
     
 
     # calculate estimated time
-    time_estimate = bias + m[0]*spindle_travel + m[1]*spindle_stops
+    time_estimate = bias + m1*spindle_travel + m2*spindle_stops
     
     if sesh_config.avg_n < 5: 
         # use temporary time_estimate because its inaccurate with small amount of samples
