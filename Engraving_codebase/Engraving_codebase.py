@@ -191,12 +191,18 @@ def wait_for_movement_completion(ser, clean_cmd_line, verbose=False):
         return None
 
 def wait_for_idle(ser): 
-    while True:
+    timeout = 0
+    while timeout < 1000:
         ser.write(b"?")
         time.sleep(0.1)
         status = ser.readline().decode()
         if "<Idle" in status:
             return
+        elif "Alarm" in status: 
+            print(f"ERROR: {status}", flush=True)
+            return
+
+        timeout = timeout + 1
 
 def write_gcode(ser, g_code_path, spindle_travel=None, spindle_stops=None, verbose=False):
     start_time = time.perf_counter()

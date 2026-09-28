@@ -44,8 +44,13 @@ def pollStatus():
         global ser
         global mapping
 
-        # reset machine cache if disconnected
+        # reset machine cache if disconnected something is wrong here write a print statekmejtn nhereb 
+        diff = time.time() - _session["last_seen"]
+        print(f"STATUS: time is {time.time()}", flush=True)
+        print(f"STATUS: last seen is {_session['last_seen']}", flush=True)
+        print(f"STATUS: timediff is {diff}", flush=True)
         if abs(time.time() - _session["last_seen"]) > DISCONNECT_TIMEOUT:
+            print("WARNING: Serial Connection Timed out, reconnecting.. ", flush=True)
             mStarted = False
             ser = None
             mapping = None
@@ -55,10 +60,12 @@ def pollStatus():
             # start the machine first
             global config_path
             global sesh_config
-
+            print("STATUS: Machine Starting", flush=True)
             with serialLock: 
                 ser = send_wakeup()
 
+            
+            print("STATUS: Loading config", flush=True)
             # load in config
             with open(config_path, "r") as f: 
                 config_dict = json.load(f)
@@ -66,7 +73,7 @@ def pollStatus():
 
             mapping = sesh_config.mapping_work
             
-
+            print("STATUS: Homing & Calibrating", flush=True)
             ser = homeNcalibrate_Web(ser, mapping, sesh_config.finish_wPos)
 
 
@@ -75,6 +82,7 @@ def pollStatus():
             # initiate auto starting sequence - catch for startup sequence, load in config file
 
         elif not ser.is_open: 
+            print("WARNING: Serial Port have been manually closed. Reopening..", flush=True)
             port = scan_grbl_port(115200)
             ser = send_wakeup(port=port)
             # restart starting sequence to zero and map
@@ -83,10 +91,11 @@ def pollStatus():
             ser.reset_input_buffer()
             ser.write(b"?")
             time.sleep(0.5)
-            response = ser.read_until(b'>').decode()
+            response = ser.read_until(b'>', 100).decode()
 
-        # print(response)
-        while True: 
+        print(response, flush=True)
+        timeout = 0
+        while timeout < 1000: 
             if response.find('Grbl 0.9j') == -1: 
                 try: 
                     status = response[response.index("<")+1:response.index(",M")]
@@ -111,7 +120,9 @@ def pollStatus():
                 with serialLock: 
                     ser.write(b"?")
                     time.sleep(0.5)
-                    response = ser.read_until(b'>').decode()
+                    response = ser.read_until(b'>',100).decode()
+                    print(response, flush=True)
+            timeout = timeout + 1
         
 
 
@@ -186,7 +197,7 @@ def jogAutoStep():
     return "ok"
 
 
-@app.route("/zeroworkingCoords", methods=["GET"])
+@app.route("/zeroworkingCoords", methods=["POST"])
 def zeroWorkingCoords(): 
     '''
     
@@ -195,7 +206,7 @@ def zeroWorkingCoords():
     '''
     global sesh_config
     data = request.get_json()
-    print("revieved data: ", data)
+    print("revieved data: ", data, flush=True)
 
     if data["type"] != "save": 
         # poll for mapping, zero then save to sesh config
@@ -215,10 +226,20 @@ def zeroWorkingCoords():
                 WPos = (0, 0, WPos[2])
             elif data["type"] == "Z": 
                 WPos = (WPos[0], WPos[1], 0)
+
+            # determine if its lath or work mapping and reset work position
             if data["tab"] == "Calibrate": 
                 sesh_config.mapping_lath = (WPos[0] - MPos[0], WPos[1] - MPos[1], WPos[2] - MPos[2])
+                msg = f"G92 X{WPos[0]:.3f} Y{WPos[1]:.3f} Z{WPos[2]:.3f}\n"
+                ser.write(str.encode(msg))
+                mapping = sesh_config.mapping_lath
             elif data["tab"] == "Prepare": 
                 sesh_config.mapping_work = (WPos[0] - MPos[0], WPos[1] - MPos[1], WPos[2] - MPos[2])
+                msg = f"G92 X{WPos[0]:.3f} Y{WPos[1]:.3f} Z{WPos[2]:.3f}\n"
+                ser.write(str.encode(msg))
+                mapping = sesh_config.mapping_work # reload mapping
+                
+
     else: 
         with open(config_path, "w") as f: 
             # save to config_path file, otherwise the mapping is temporarily used during the session
@@ -268,13 +289,14 @@ def pollPoses():
     """
     
     performs one serial poll of "?" and record the response cordinate system. 
-
+    may soft lock a system if it has not started
     """
     with pollLock: 
         ip = _get_client_ip()
         if _session["ip"] == ip or _lock_is_stale():
             _session["ip"] = ip
             _session["last_seen"] = time.time()
+            print("TEMP MSG: Last Seen updated. ", flush=True)
 
         with serialLock: 
             try: 
@@ -493,13 +515,14 @@ def enforce_single_user():
         if _session["ip"] is None or _lock_is_stale():
             # nobody holds it, or previous holder timed out -> take it
             _session["ip"] = ip
-            _session["last_seen"] = time.time()
+            # _session["last_seen"] = time.time()
         elif _session["ip"] != ip:
             # someone else has it and is still active
             abort(423, description="Another user is currently controlling the Engraving machine.")
         else:
             # same user, refresh
-            _session["last_seen"] = time.time()
+            pass
+            # _session["last_seen"] = time.time()
 
 
 @app.errorhandler(423)
@@ -516,19 +539,17 @@ def homeNcalibrate_Web(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25
         time.sleep(2)
         msg = ser.read_until(b"unlock]").decode()
         ser.write(b"$H\n")
-        print("waiting")
+        print("STATUS: waiting for Homing command to finish execution.", flush=True)
         wait_for_movement_completion_Web(ser, "$H\n")
-        print("calculating mPos")
         mPos = (wPos[0] - mapping[0], wPos[1] - mapping[1], wPos[2] - mapping[2])
         home_cmd = f"G53 X{mPos[0]:.3f} Y{mPos[1]:.3f} Z{mPos[2]:.3f}\n"
-        print("writing the home movement command")
+        print("STATUS: writing the home movement command. ", flush=True)
         ser.write(str.encode(home_cmd))
         wait_for_idle(ser)          # now inside the same lock
 
         time.sleep(2)
-        print("calculating wpos")
         work_cmd = f"G92 X{wPos[0]:.3f} Y{wPos[1]:.3f} Z{wPos[2]:.3f}\n"
-        print("writing work reset command")
+        print("STATUS: writing work reset command. ", flush=True)
         ser.write(str.encode(work_cmd))
         wait_for_idle(ser)          # and here too
 
@@ -536,19 +557,25 @@ def homeNcalibrate_Web(ser, mapping=(193.001, 172.801, 28.521), wPos=(0, 125, 25
 
 
 def wait_for_movement_completion_Web(ser, clean_cmd_line): 
-    # Event().wait(1)
+    """
+    
+    Wait for movement completion of long executing commands like homing, handle error during waiting. 
+
+    
+    
+    """
+    counter = 0
     if clean_cmd_line not in ("$X", "$$"): 
         cmd_out = ser.readline().strip().decode()
-        temp_counter = 0
+        
+        if cmd_out.find("ALARM") != -1: 
+            print(f"ERROR: {cmd_out}", flush=True)
+            return None
+        
+        print("STATUS: Waiting", flush=True, end="")
         while cmd_out != "ok": 
 
-            print("inside loop")
-            if "alarm" in cmd_out.lower():
-
-                print("Machine in Alarm state!")
-                ser.write(b"$H\n")
-                pass
-
+            
             
             if "error" in cmd_out:
                 # print the error out
@@ -559,10 +586,11 @@ def wait_for_movement_completion_Web(ser, clean_cmd_line):
             time.sleep(1)
 
             cmd_out = ser.readline().strip().decode()
-            print(cmd_out)
-            temp_counter += 1
+            counter += 1
+            print(".", flush=True, end="")
 
-            if temp_counter >= 1000: 
+            if counter >= 1000: 
+                print("STATUS: Wait Timeout has been reached. ", flush=True)
                 break
 
         
@@ -570,13 +598,11 @@ def wait_for_movement_completion_Web(ser, clean_cmd_line):
 
 def heartbeat_communication(): 
     """
-    
-    
     """
 
     
 if __name__ == "__main__":
     # establish a port lock for the application to prevent multiple users from connecting 
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=8000)
 
     # create a thread that sends some sorta heartbeat signal despite website disconnection

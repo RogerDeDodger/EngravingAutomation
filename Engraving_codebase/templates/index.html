@@ -22,10 +22,42 @@ body {
     flex: 1;
 }
 
+.tab-bar-small {
+    display: flex;
+    background-color: #797979;
+    flex: 1;
+}
+
 .tab {
     padding: 15px 25px;
     cursor: pointer;
     font-size: 18px;
+}
+
+.tab-small {
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+.tab-small:hover {
+    background-color: #444;
+
+}
+
+.tab-small.active {
+    background-color: #acacac;
+    color: #0078d4;
+    font-weight: bold;
+    border-bottom-style: solid;
+    border-bottom-width: 5px;
+    border-bottom-color: rgb(14, 30, 175);
+
+}
+
+.tab-small.disabled {
+    background-color: #cccccc;
+    color: #666666
 }
 
 .tab-mstatus {
@@ -38,10 +70,6 @@ body {
     background-color: red;
 }
 
-.tab-onbutton {
-
-}
-
 .tab:hover {
     background-color: #444;
 }
@@ -50,6 +78,12 @@ body {
     background-color: #0078d4;
 }
 
+.tab.disabled {
+    background-color: #cccccc;
+    color: #666666
+}
+
+
 /* ===== CONTENT ===== */
 .tab-content {
     display: none;
@@ -57,6 +91,15 @@ body {
 }
 
 .tab-content.active {
+    display: block;
+}
+
+.tab-content-small {
+    display: none;
+    padding: 20px;
+}
+
+.tab-content-small.active {
     display: block;
 }
 
@@ -642,10 +685,29 @@ datalist {
 </div>
 
 <!-- ===== SETTINGS TAB ===== -->
-<div id="Calibrate" class="tab-content">
-    <div class="panel">
+<div id="Calibrate" class="tab-content" style="padding: 0px">
+    <div class="tab-bar-small">
+        <div class="tab-small active" onclick="openTabSmall('lubeAx')">Lubricate Axis</div>
+        <div class="tab-small" onclick="openTabSmall('lathSplbd')">Lath Spoilboard</div>
+        <div class="tab-small" onclick="openTabSmall('RecalZ')">Recalibrate Z level</div>
+
+    </div>
+
+    <div class="tab-content-small active" id="lubeAx">
+        <h2>Settings</h2>
+    </div>
+    
+    <div class="tab-content-small" id="lathSplbd">
         <h2>Settings</h2>
         <button class="big-button blue">Calibrate</button>
+    </div>
+    <div class="tab-content-small" id="RecalZ">
+        <h2>Settings</h2>
+        <button class="big-button blue">Calibrate</button>
+        <button class="big-button blue">Calibrate</button>
+    </div>
+        
+        
     </div>
 </div>
 
@@ -1111,10 +1173,6 @@ async function handleSelection(value) {
         container.value = data[key]
     }
 
-
-
-    return fields;
-
 }
 
 window.addEventListener('DOMContentLoaded', function() {
@@ -1192,36 +1250,36 @@ function jogStep(modeValue) {
 
 function zeroXYWorking(modeValue) {
     // send request with current tab information
-    const activetab = document.querySelector(".tab-content.active")
+    const activetabid = document.querySelector(".tab-content.active").id
     const response = fetch("/zeroworkingCoords", {
         method: "POST",
-        header: {"content-Type": "application/json"},
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({type: "XY", 
-            tab: activetab
-        }).then(response = response)
+            tab: activetabid
+        })
     })
 }
 
 
 function zeroZWorking() {
-    const activetab = document.querySelector(".tab-content.active")
+    const activetabid = document.querySelector(".tab-content.active").id
     const response = fetch("/zeroworkingCoords", {
-        method: "POST",
-        header: {"content-Type": "application/json"},
+        method: "POST", 
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({type: "Z", 
-            tab: activetab
-        }).then(response = response) // all previous is console.log
+            tab: activetabid
+        })
     })
 }
 
 function saveMapping() {
-    const activetab = document.querySelector(".tab-content.active")
+    const activetabid = document.querySelector(".tab-content.active").id
     const response = fetch("/zeroworkingCoords", {
         method: "POST",
-        header: {"content-Type": "application/json"},
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({type: "save", 
-            tab: activetab
-        }).then(response = response)
+            tab: activetabid
+        })
     })
 }
 
@@ -1291,6 +1349,19 @@ function openTab(tabName) {
     event.target.classList.add("active");
 }
 
+function openTabSmall(tabName) {
+    const contents = document.querySelectorAll(".tab-content-small");
+    contents.forEach(c => c.classList.remove("active"));
+
+    const tabs = document.querySelectorAll(".tab-small");
+    tabs.forEach(t => t.classList.remove("active"));
+
+    document.getElementById(tabName).classList.add("active");
+
+    event.target.classList.add("active")
+
+}
+
 function movePosition() {
     // send the current position, and what we are currently measuring in for python to move spindle
     const posX = document.getElementById("jogPosX").value
@@ -1339,6 +1410,7 @@ function pollStatus() {
     .then(data => {
         if (data != "OK") {
             document.getElementById("mstatus_box").textContent = data.Mstatus; // load the data: may need to add "Machine Status: " string
+            document.getElementById("mstatus_box").style.backgroundColor = data.color;
         }
     })
     
